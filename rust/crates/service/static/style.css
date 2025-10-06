@@ -1,0 +1,488 @@
+/* Base CSS Variables - following Python project theming system */
+:root {
+  /* Light mode defaults */
+  --background: 0 0% 100%;  /* Pure white */
+  --foreground: 0 0% 0%;    /* Pure black */
+  
+  --muted: 0 0% 95%;        /* Very light grey */
+  --muted-foreground: 0 0% 40%;  /* Dark grey */
+  
+  --card: 0 0% 100%;        /* White */
+  --card-foreground: 0 0% 0%;    /* Black */
+  
+  --popover: 0 0% 100%;     /* White */
+  --popover-foreground: 0 0% 0%; /* Black */
+  
+  --border: 0 0% 85%;       /* Light grey border */
+  --input: 0 0% 85%;        /* Light grey border */
+  
+  --primary: 0 0% 0%;       /* Black primary */
+  --primary-foreground: 0 0% 100%; /* White text on black */
+  
+  --secondary: 0 0% 90%;    /* Light grey */
+  --secondary-foreground: 0 0% 0%; /* Black text */
+  
+  --accent: 0 0% 70%;       /* Medium grey accent */
+  --accent-foreground: 0 0% 0%;   /* Black text */
+  
+  --destructive: 0 0% 20%; /* Dark grey for errors */
+  --destructive-foreground: 0 0% 100%; /* White text */
+  
+  --ring: 0 0% 50%;         /* Medium grey focus ring */
+}
+
+/* Dark mode - INVERTED BLACK AND WHITE */
+.dark {
+  --background: 0 0% 0%;    /* Pure black */
+  --foreground: 0 0% 100%;  /* Pure white */
+  
+  --muted: 0 0% 10%;        /* Very dark grey */
+  --muted-foreground: 0 0% 60%;  /* Light grey */
+  
+  --card: 0 0% 0%;          /* Black */
+  --card-foreground: 0 0% 100%;  /* White */
+  
+  --popover: 0 0% 0%;       /* Black */
+  --popover-foreground: 0 0% 100%; /* White */
+  
+  --border: 0 0% 20%;       /* Dark grey border */
+  --input: 0 0% 20%;        /* Dark grey border */
+  
+  --primary: 0 0% 100%;     /* White primary */
+  --primary-foreground: 0 0% 0%; /* Black text on white */
+  
+  --secondary: 0 0% 15%;    /* Dark grey */
+  --secondary-foreground: 0 0% 100%; /* White text */
+  
+  --accent: 0 0% 30%;       /* Dark grey accent */
+  --accent-foreground: 0 0% 100%; /* White text */
+  
+  --destructive: 0 0% 80%; /* Light grey for errors */
+  --destructive-foreground: 0 0% 0%; /* Black text */
+  
+  --ring: 0 0% 50%;         /* Medium grey focus ring */
+}
+
+/* Base body styles using HSL color space */
+body {
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Utility classes matching Python project */
+.container {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1rem;
+}
+
+/* Franken UI integration classes */
+.bg-background {
+    background-color: hsl(var(--background));
+}
+
+.bg-muted {
+    background-color: hsl(var(--muted));
+}
+
+.text-foreground {
+    color: hsl(var(--foreground));
+}
+
+.text-primary {
+    color: hsl(var(--primary));
+}
+
+.text-muted-foreground {
+    color: hsl(var(--muted-foreground));
+}
+
+.border-b {
+    border-bottom: 1px solid hsl(var(--border));
+}
+
+.border-t {
+    border-top: 1px solid hsl(var(--border));
+}
+
+.text-decoration-none {
+    text-decoration: none;
+}
+
+.transition-colors {
+    transition: color 0.2s ease;
+}
+
+.hover\:text-primary:hover {
+    color: hsl(var(--primary));
+}
+
+/* Flexbox utilities */
+.flex {
+    display: flex;
+}
+
+.flex-1 {
+    flex: 1;
+}
+
+.items-center {
+    align-items: center;
+}
+
+.justify-between {
+    justify-content: space-between;
+}
+
+.justify-center {
+    justify-content: center;
+}
+
+.gap-2 {
+    gap: 0.5rem;
+}
+
+.gap-4 {
+    gap: 1rem;
+}
+
+.gap-6 {
+    gap: 1.5rem;
+}
+
+/* Spacing utilities */
+.mx-auto {
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.mt-auto {
+    margin-top: auto;
+}
+
+.p-4 {
+    padding: 1rem;
+}
+
+.p-8 {
+    padding: 2rem;
+}
+
+.px-4 {
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+
+.py-4 {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}
+
+.py-6 {
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+}
+
+/* Typography utilities */
+.text-xl {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+}
+
+.text-sm {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+}
+
+.font-bold {
+    font-weight: bold;
+}
+
+/* Additional utility classes */
+.max-w-4xl {
+    max-width: 56rem;
+}
+
+.space-y-6 > * + * {
+    margin-top: 1.5rem;
+}
+
+/* Updated navigation styles using CSS variables */
+nav {
+    background-color: hsl(var(--background));
+    border-bottom: 1px solid hsl(var(--border));
+}
+
+nav a {
+    color: hsl(var(--foreground));
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+nav a:hover {
+    color: hsl(var(--primary));
+}
+
+nav .logo {
+    color: hsl(var(--primary));
+    font-weight: bold;
+    font-size: 1.25rem;
+    text-decoration: none;
+}
+
+/* Main content - updated for new layout */
+main {
+    flex: 1;
+    padding: 2rem;
+    background-color: hsl(var(--background));
+}
+
+/* Card component matching Python project */
+.card {
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.card-header h2 {
+    color: hsl(var(--card-foreground));
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.card-header i {
+    color: hsl(var(--primary));
+    opacity: 0.8;
+}
+
+/* Info box styling */
+.info-box {
+    background-color: hsl(var(--muted));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.375rem;
+    padding: 1rem;
+}
+
+.info-box p {
+    margin: 0.5rem 0;
+    color: hsl(var(--card-foreground));
+}
+
+.info-box strong {
+    color: hsl(var(--muted-foreground));
+}
+
+/* Button components using CSS variables */
+.button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background-color: hsl(var(--secondary));
+    color: hsl(var(--secondary-foreground));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.button:hover {
+    background-color: hsl(var(--secondary) / 0.8);
+    border-color: hsl(var(--primary));
+}
+
+.button-primary {
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border-color: hsl(var(--primary));
+}
+
+.button-primary:hover {
+    background-color: hsl(var(--primary) / 0.9);
+}
+
+.button i {
+    opacity: 0.8;
+    font-size: 0.9em;
+}
+
+/* Actions container */
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: flex-start;
+    margin-top: 1rem;
+}
+
+/* Tables with updated CSS variables */
+table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 1rem 0;
+    background-color: hsl(var(--card));
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+table th {
+    color: hsl(var(--muted-foreground));
+    font-weight: 500;
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid hsl(var(--border));
+    background-color: hsl(var(--muted));
+}
+
+table td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid hsl(var(--border));
+    color: hsl(var(--card-foreground));
+}
+
+table tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+table tbody tr:hover {
+    background-color: hsl(var(--muted) / 0.5);
+}
+
+/* Button variants */
+.button-ghost {
+    background: transparent;
+    border-color: hsl(var(--border));
+    color: hsl(var(--foreground));
+}
+
+.button-ghost:hover {
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary));
+    background-color: hsl(var(--muted) / 0.5);
+}
+
+.button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* Forms with updated CSS variables */
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: hsl(var(--foreground));
+    font-weight: 500;
+}
+
+.form-control {
+    background-color: hsl(var(--background));
+    border: 1px solid hsl(var(--input));
+    color: hsl(var(--foreground));
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    font-family: inherit;
+    width: 100%;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: hsl(var(--ring));
+    box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+}
+
+/* Footer styles using CSS variables */
+footer {
+    background-color: hsl(var(--background));
+    border-top: 1px solid hsl(var(--border));
+    margin-top: auto;
+}
+
+footer a {
+    color: hsl(var(--muted-foreground));
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+footer a:hover {
+    color: hsl(var(--primary));
+}
+
+/* Messages with updated styling */
+.message {
+    padding: 1rem;
+    border-radius: 0.375rem;
+    background-color: hsl(var(--muted));
+    border: 1px solid hsl(var(--border));
+    margin: 1rem 0;
+    color: hsl(var(--card-foreground));
+}
+
+.message.error {
+    background-color: hsl(var(--destructive) / 0.1);
+    border-color: hsl(var(--destructive));
+    color: hsl(var(--destructive-foreground));
+}
+
+.message.success {
+    background-color: hsl(120, 50%, 90%);
+    border-color: hsl(120, 50%, 50%);
+    color: hsl(120, 50%, 20%);
+}
+
+.dark .message.success {
+    background-color: hsl(120, 50%, 10%);
+    border-color: hsl(120, 50%, 30%);
+    color: hsl(120, 50%, 80%);
+}
+
+/* Pool component */
+.pool {
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+/* Font Awesome utilities */
+.fa-3x {
+    font-size: 3em;
+}
+
+/* Legacy utility classes for backward compatibility */
+.mb-6 {
+    margin-bottom: 1.5rem;
+}
+
+.mr-2 {
+    margin-right: 0.5rem;
+} 

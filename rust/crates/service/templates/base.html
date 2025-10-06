@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <title>{% block title %}Jax Tracker{% endblock %}</title>
+    
+    <!-- Inter font -->
+    <link rel="preconnect" href="https://rsms.me/" />
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+    
+    <style>
+      :root {
+        font-family: Inter, sans-serif;
+        font-feature-settings: "liga" 1, "calt" 1;
+      }
+      @supports (font-variation-settings: normal) {
+        :root {
+          font-family: InterVariable, sans-serif;
+        }
+      }
+    </style>
+
+    <!-- Franken UI -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/css/core.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/css/utilities.min.css" />
+
+    <script>
+      const htmlElement = document.documentElement;
+      const __FRANKEN__ = JSON.parse(localStorage.getItem("__FRANKEN__") || "{}");
+
+      if (__FRANKEN__.mode === "dark" || (!__FRANKEN__.mode && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+        htmlElement.classList.add("dark");
+      } else {
+        htmlElement.classList.remove("dark");
+      }
+
+      if (__FRANKEN__.theme) {
+        htmlElement.classList.add(__FRANKEN__.theme);
+      }
+      htmlElement.classList.add(__FRANKEN__.radii || "uk-radii-md");
+      htmlElement.classList.add(__FRANKEN__.shadows || "uk-shadows-sm");
+      htmlElement.classList.add(__FRANKEN__.font || "uk-font-sm");
+      htmlElement.classList.add(__FRANKEN__.chart || "uk-chart-default");
+    </script>
+
+    <script type="module" src="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/js/core.iife.js"></script>
+    
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+    
+    <!-- Custom styles -->
+    <link rel="stylesheet" href="/static/style.css">
+    
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-background text-foreground">
+    <nav class="border-b bg-background">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex justify-between items-center">
+                <a href="/" class="flex items-center gap-2 text-primary font-bold text-xl text-decoration-none">
+                    <i class="fas fa-database"></i>
+                    <span>jax</span>
+                </a>
+                <div class="flex gap-6">
+                    <a href="/blobs" class="text-foreground hover:text-primary transition-colors text-decoration-none">Blobs</a>
+                    <a href="/pools" class="text-foreground hover:text-primary transition-colors text-decoration-none">Pools</a>
+                    <a href="/share" class="text-foreground hover:text-primary transition-colors text-decoration-none">Share</a>
+                    <a href="/query" class="text-foreground hover:text-primary transition-colors text-decoration-none">Query</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <main class="flex-1 p-8">
+        <div class="container mx-auto">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <footer class="border-t bg-background mt-auto">
+        <div class="container mx-auto px-4 py-6">
+            <div class="flex justify-between items-center text-sm text-muted-foreground">
+                <p>&copy; 2025 jax protocol</p>
+                <div class="flex gap-6">
+                    <a href="#" class="hover:text-primary transition-colors text-decoration-none">Terms</a>
+                    <a href="#" class="hover:text-primary transition-colors text-decoration-none">Privacy</a>
+                    <a href="#" class="hover:text-primary transition-colors text-decoration-none">Docs</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script type="module" src="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/js/icon.iife.js"></script>
+    <script src="/static/app.js"></script>
+</body>
+</html> 
