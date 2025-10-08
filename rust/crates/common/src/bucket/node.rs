@@ -236,6 +236,12 @@ pub enum NodeError {
 impl BlockEncoded<DagCborCodec> for Node {}
 
 impl Node {
+    pub fn new() -> Self {
+        Node {
+            links: BTreeMap::new(),
+        }
+    }
+
     pub fn get_link(&self, name: &str) -> Option<&NodeLink> {
         self.links.get(name)
     }

@@ -50,6 +50,33 @@ impl Bucket {
         Ok(bucket)
     }
 
+    pub async fn update_link(&self, new_link: Link, db: &Database) -> Result<(), BucketError> {
+        let dcid: DCid = new_link.into();
+        sqlx::query!(
+            r#"
+            UPDATE buckets
+            SET link = $1, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2
+            "#,
+            dcid,
+            self.id
+        )
+        .execute(&**db)
+        .await
+        .map_err(|e| match e {
+            sqlx::Error::Database(ref db_error) => {
+                if db_error.constraint().is_some() {
+                    BucketError::AlreadyExists(self.name.clone())
+                } else {
+                    BucketError::Database(e)
+                }
+            }
+            _ => BucketError::Database(e),
+        })?;
+
+        Ok(())
+    }
+
     pub async fn get_by_id(id: &Uuid, db: &Database) -> Result<Option<Bucket>, BucketError> {
         let bucket = sqlx::query_as!(
             Bucket,

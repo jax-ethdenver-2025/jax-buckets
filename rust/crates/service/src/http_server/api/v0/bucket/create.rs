@@ -37,32 +37,28 @@ pub async fn handler(
         return Err(CreateError::InvalidName("Name cannot be empty".into()));
     }
 
-    let owner = state.node().id();
-    let bucket = Bucket::new(req.name.clone(), owner.into());
+    let id = Uuid::new_v4();
+    let owner = state.node().secret();
     let blobs = state.node().blobs();
-    let link = Mount::_put_bucket_in_blobs(&bucket, blobs).await?;
+    let mount = Mount::init(id, req.name.clone(), owner, blobs).await?;
+    let link = mount.link();
 
     // Create bucket in database
-    let _bucket = BucketModel::create(
-        bucket.id().clone(),
-        req.name.clone(),
-        link.clone(),
-        state.database(),
-    )
-    .await
-    .map_err(|e| match e {
-        crate::database::models::bucket::BucketError::AlreadyExists(name) => {
-            CreateError::AlreadyExists(name)
-        }
-        crate::database::models::bucket::BucketError::Database(e) => {
-            CreateError::Database(e.to_string())
-        }
-    })?;
+    let _bucket = BucketModel::create(id, req.name.clone(), link.clone(), state.database())
+        .await
+        .map_err(|e| match e {
+            crate::database::models::bucket::BucketError::AlreadyExists(name) => {
+                CreateError::AlreadyExists(name)
+            }
+            crate::database::models::bucket::BucketError::Database(e) => {
+                CreateError::Database(e.to_string())
+            }
+        })?;
 
     Ok((
         http::StatusCode::CREATED,
         Json(CreateResponse {
-            bucket_id: bucket.id().clone(),
+            bucket_id: _bucket.id.clone(),
             name: _bucket.name,
             created_at: _bucket.created_at,
         }),

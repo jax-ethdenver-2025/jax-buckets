@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE buckets\n            SET link = $1, updated_at = CURRENT_TIMESTAMP\n            WHERE id = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "03de6bfe5c1327d14479e41d2503d7e29983c2fe5392dc4694d46644f3001fc4"
+}

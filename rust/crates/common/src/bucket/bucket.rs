@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use iroh::SecretKey;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -80,6 +81,29 @@ pub struct Bucket {
 impl BlockEncoded<DagCborCodec> for Bucket {}
 
 impl Bucket {
+    /// Create a new bucket with a name, owner, and share, and entry node link
+    pub fn init(id: Uuid, name: String, owner: PublicKey, share: Share, root: Link) -> Self {
+        Bucket {
+            id,
+            name,
+            shares: BTreeMap::from([(
+                owner.to_hex(),
+                BucketShare {
+                    principal: Principal {
+                        role: PrincipalRole::Owner,
+                        identity: owner,
+                    },
+                    share,
+                    root,
+                },
+            )]),
+            pins: None,
+            previous: None,
+            version: Version::default(),
+        }
+    }
+
+    /// @deprecated -- don't use this
     pub fn new(name: String, owner: PublicKey) -> Self {
         Bucket {
             id: Uuid::new_v4(),

@@ -4,9 +4,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use parking_lot::Mutex;
+use uuid::Uuid;
 
 use crate::bucket::{Bucket, Node, NodeError, NodeLink};
-use crate::crypto::{Secret, SecretError, SecretKey};
+use crate::crypto::{Secret, SecretError, SecretKey, Share};
 use crate::linked_data::{BlockEncoded, CodecError, Link};
 use crate::node::{BlobsStore, BlobsStoreError};
 
@@ -67,9 +68,44 @@ pub enum MountError {
     Share(#[from] crate::crypto::ShareError),
 }
 
+// NOTE (amiller68): `Mount` and `Bucket` kinda overlap on
+//  responsibilities, I should probably refactor this.
 impl Mount {
     pub fn inner(&self) -> MountInner {
         self.0.lock().clone()
+    }
+
+    pub fn link(&self) -> Link {
+        let inner = self.0.lock();
+        let link = inner.link.clone();
+        link
+    }
+
+    pub async fn init(
+        id: Uuid,
+        name: String,
+        owner: &SecretKey,
+        blobs: &BlobsStore,
+    ) -> Result<Self, MountError> {
+        // create a new root node for the bucket
+        let node = Node::default();
+        // create a new secret for the owner
+        let secret = Secret::generate();
+        // put the node in the blobs store for the secret
+        let root = Self::_put_node_in_blobs(&node, &secret, blobs).await?;
+        // share the secret with the owner
+        let share = Share::new(&secret, &owner.public())?;
+        // construct the new bucket
+        let bucket = Bucket::init(id, name, owner.public(), share, root);
+        // put the bucket in the blobs store for the secret
+        let link = Self::_put_bucket_in_blobs(&bucket, blobs).await?;
+        // return the new mount
+        Ok(Mount(Arc::new(Mutex::new(MountInner {
+            link,
+            bucket,
+            pins: None,
+            root_node: node,
+        }))))
     }
 
     pub async fn load(
@@ -79,25 +115,42 @@ impl Mount {
     ) -> Result<Self, MountError> {
         let public_key = &secret_key.public();
 
+        println!("Loading mount");
+
         let bucket = Self::_get_bucket_from_blobs(link, blobs).await?;
 
+        println!("bucket loaded from blobs");
+
         let _bucket_share = bucket.get_share(public_key);
+
+        println!("bucket share loaded");
 
         if _bucket_share.is_none() {
             return Err(MountError::LinkNotFound(link.clone()));
         }
+
+        println!("bucket share loaded");
+
         let bucket_share = _bucket_share.unwrap();
         let share = bucket_share.share();
         let secret = share.recover(secret_key)?;
+
+        println!("share recovered");
+
         let link = bucket_share.root().clone();
-        let node_link = NodeLink::Dir(link.clone(), secret);
-        let root_node = Self::_get_node_from_blobs(&node_link, blobs).await?;
-        Ok(Mount(Arc::new(Mutex::new(MountInner {
-            link,
-            bucket,
-            pins: None,
-            root_node,
-        }))))
+        if link == Link::default() {
+            // TODO (amiller68): be better
+            panic!("default link found")
+        } else {
+            let root_node =
+                Self::_get_node_from_blobs(&NodeLink::Dir(link.clone(), secret), blobs).await?;
+            Ok(Mount(Arc::new(Mutex::new(MountInner {
+                link,
+                bucket,
+                pins: None,
+                root_node,
+            }))))
+        }
     }
 
     pub async fn add<R>(
@@ -113,6 +166,7 @@ impl Mount {
 
         let encrypted_reader = secret.encrypt_reader(data)?;
 
+        // TODO (amiller68): this is incredibly dumb
         use bytes::Bytes;
         use futures::stream;
         let encrypted_bytes = {

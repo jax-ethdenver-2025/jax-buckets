@@ -11,8 +11,7 @@ mod blobs_store;
 
 pub use blobs_store::{BlobsStore, BlobsStoreError};
 
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct NodeBuilder {
     /// the socket addr to expose the peer on
     ///  if not set, an ephemeral port will be used
@@ -26,7 +25,6 @@ pub struct NodeBuilder {
     ///  if not set a temporary directory will be used
     blobs_store_path: Option<PathBuf>,
 }
-
 
 // TODO (amiller68): proper errors
 impl NodeBuilder {

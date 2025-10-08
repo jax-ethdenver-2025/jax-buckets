@@ -1,14 +1,22 @@
 use clap::{Args, Subcommand};
 
+pub mod add;
 pub mod create;
 pub mod list;
+pub mod ls;
+pub mod mount;
 
 use crate::op::Op;
-use service::http_server::api::v0::bucket::{CreateRequest, ListRequest};
+use service::http_server::api::v0::bucket::{
+    AddRequest, CreateRequest, ListRequest, LsRequest, MountRequest,
+};
 
 crate::command_enum! {
     (Create, CreateRequest),
     (List, ListRequest),
+    (Add, AddRequest),
+    (Ls, LsRequest),
+    (Mount, MountRequest),
 }
 
 // Rename the generated Command to BucketCommand for clarity
