@@ -36,6 +36,8 @@ pub struct Link(u64, Hash, BlobFormat);
  *    - private structured data (RAW, but underlying format is DAG-CBOR)
  *    - public structured data (DAG-CBOR)
  */
+#[allow(clippy::doc_overindented_list_items)]
+#[allow(clippy::doc_lazy_continuation)]
 impl Default for Link {
     fn default() -> Self {
         Link(LD_RAW_CODEC, Hash::from_bytes([0; 32]), BlobFormat::Raw)

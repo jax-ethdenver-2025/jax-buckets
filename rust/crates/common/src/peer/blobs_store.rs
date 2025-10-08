@@ -47,6 +47,7 @@ impl BlobsStore {
     /// * `endpoint` - Endpoint to use for network operations
     ///     Exposes a peer for the private key used to initiate
     ///     the endpoint.
+    #[allow(clippy::doc_overindented_list_items)]
     pub async fn load(path: &Path, endpoint: Endpoint) -> Result<Self, BlobsStoreError> {
         let store = Store::load(path).await?;
         let blobs = Blobs::builder(store).build(&endpoint);

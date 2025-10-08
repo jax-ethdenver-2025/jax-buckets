@@ -153,6 +153,7 @@ impl Mount {
         }
     }
 
+    #[allow(clippy::await_holding_lock)]
     pub async fn add<R>(
         &mut self,
         path: &Path,
@@ -206,6 +207,7 @@ impl Mount {
         Ok(())
     }
 
+    #[allow(clippy::await_holding_lock)]
     pub async fn rm(&mut self, path: &Path, blobs: &BlobsStore) -> Result<(), MountError> {
         let path = clean_path(path);
         let parent_path = path
@@ -265,6 +267,7 @@ impl Mount {
         Ok(())
     }
 
+    #[allow(clippy::await_holding_lock)]
     pub async fn ls(
         &self,
         path: &Path,
@@ -345,6 +348,7 @@ impl Mount {
         Ok(all_items)
     }
 
+    #[allow(clippy::await_holding_lock)]
     pub async fn cat(&self, path: &Path, blobs: &BlobsStore) -> Result<Vec<u8>, MountError> {
         let path = clean_path(path);
 

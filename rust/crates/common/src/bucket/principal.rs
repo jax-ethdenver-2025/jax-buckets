@@ -1,3 +1,6 @@
+#![allow(clippy::doc_lazy_continuation)]
+#![allow(clippy::doc_overindented_list_items)]
+
 use serde::{Deserialize, Serialize};
 
 use crate::crypto::PublicKey;

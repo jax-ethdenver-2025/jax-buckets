@@ -142,6 +142,7 @@ impl Share {
         Ok(Share::from(buff))
     }
 
+    #[allow(clippy::wrong_self_convention)]
     pub fn to_hex(&self) -> String {
         hex::encode(self.0)
     }

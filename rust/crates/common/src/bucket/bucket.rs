@@ -167,7 +167,7 @@ mod tests {
     fn test_bucket_encode_decode() {
         // Create a bucket
         let owner = crate::crypto::SecretKey::generate().public();
-        let bucket = Bucket::new("test-bucket".to_string(), owner.clone());
+        let bucket = Bucket::new("test-bucket".to_string(), owner);
 
         // Encode
         let encoded = bucket.encode().unwrap();
@@ -187,13 +187,13 @@ mod tests {
     fn test_bucket_with_shares_encode_decode() {
         // Create a bucket with shares
         let owner = crate::crypto::SecretKey::generate().public();
-        let mut bucket = Bucket::new("test-bucket".to_string(), owner.clone());
+        let mut bucket = Bucket::new("test-bucket".to_string(), owner);
 
         // Add a share
         let secret = Secret::generate();
         let root = Link::default();
         bucket
-            .add_share(owner.clone(), root.clone(), secret)
+            .add_share(owner, root.clone(), secret)
             .unwrap();
 
         // Encode

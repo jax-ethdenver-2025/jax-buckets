@@ -88,6 +88,7 @@ impl PublicKey {
      * Convert our Ed25519 key into its X25519 curve equivalent
      *  for the purpose of doing key sharing
      */
+    #[allow(clippy::wrong_self_convention)]
     pub(crate) fn to_x25519(&self) -> Result<X25519PublicKey, KeyError> {
         let edwards_bytes = self.to_bytes();
         let edwards_point = CompressedEdwardsY::from_slice(&edwards_bytes)

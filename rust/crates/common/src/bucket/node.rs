@@ -1,3 +1,5 @@
+#![allow(clippy::doc_lazy_continuation)]
+
 use std::collections::BTreeMap;
 use std::path::Path;
 
