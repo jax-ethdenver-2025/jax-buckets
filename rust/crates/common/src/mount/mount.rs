@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::bucket::{Bucket, Node, NodeError, NodeLink};
 use crate::crypto::{Secret, SecretError, SecretKey, Share};
 use crate::linked_data::{BlockEncoded, CodecError, Link};
-use crate::node::{BlobsStore, BlobsStoreError};
+use crate::peer::{BlobsStore, BlobsStoreError};
 
 use super::pins::Pins;
 
@@ -77,8 +77,8 @@ impl Mount {
 
     pub fn link(&self) -> Link {
         let inner = self.0.lock();
-        let link = inner.link.clone();
-        link
+
+        inner.link.clone()
     }
 
     pub async fn init(

@@ -36,6 +36,12 @@ pub struct Data {
     metadata: Option<BTreeMap<String, LinkedData>>,
 }
 
+impl Default for Data {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Data {
     /// Create a new Data with no metadata
     pub fn new() -> Self {

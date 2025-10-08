@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use common::prelude::{Bucket, Mount, MountError};
+use common::prelude::{Mount, MountError};
 
 use crate::http_server::api::client::ApiRequest;
 use crate::ServiceState;
@@ -58,7 +58,7 @@ pub async fn handler(
     Ok((
         http::StatusCode::CREATED,
         Json(CreateResponse {
-            bucket_id: _bucket.id.clone(),
+            bucket_id: _bucket.id,
             name: _bucket.name,
             created_at: _bucket.created_at,
         }),
@@ -93,7 +93,7 @@ impl IntoResponse for CreateError {
                 .into_response(),
             CreateError::Database(_) | CreateError::Mount(_) => (
                 http::StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Unexpected error"),
+                "Unexpected error".to_string(),
             )
                 .into_response(),
         }

@@ -26,7 +26,7 @@ mod mount;
  *  Just a light wrapper around the Iroh-Blobs
  *  protocol and ALPN handler
  */
-mod node;
+mod peer;
 /**
  * Helper for setting build version information
  *  at compile time.
@@ -38,6 +38,6 @@ pub mod prelude {
     pub use crate::crypto::{PublicKey, SecretKey};
     pub use crate::linked_data::{multibase, Cid, CidError, Link};
     pub use crate::mount::{Mount, MountError};
-    pub use crate::node::Node;
+    pub use crate::peer::Node;
     pub use crate::version::build_info;
 }

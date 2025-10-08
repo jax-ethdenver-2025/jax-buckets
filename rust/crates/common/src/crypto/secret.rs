@@ -14,6 +14,7 @@ pub const NONCE_SIZE: usize = 12;
 // ChaCha20-Poly1305 uses 32-byte keys
 pub const SECRET_SIZE: usize = 32;
 // Chunk size for streaming (can be any size)
+#[allow(dead_code)]
 pub const CHUNK_SIZE: usize = 4096;
 
 #[derive(Debug, thiserror::Error)]

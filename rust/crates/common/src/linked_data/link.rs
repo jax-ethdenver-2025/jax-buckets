@@ -36,7 +36,6 @@ pub struct Link(u64, Hash, BlobFormat);
  *    - private structured data (RAW, but underlying format is DAG-CBOR)
  *    - public structured data (DAG-CBOR)
  */
-
 impl Default for Link {
     fn default() -> Self {
         Link(LD_RAW_CODEC, Hash::from_bytes([0; 32]), BlobFormat::Raw)

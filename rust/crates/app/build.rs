@@ -8,6 +8,7 @@ fn report_build_profile() {
     );
 }
 
+#[allow(unexpected_cfgs)]
 fn report_enabled_features() {
     let mut enabled_features: Vec<&str> = Vec::new();
 

@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 
-use iroh::SecretKey;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -55,7 +54,7 @@ impl BucketShare {
 *   - the entry point of the bucket
 *   - the previous version of the bucket
 */
-
+#[allow(clippy::doc_overindented_list_items)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Bucket {
     // Buckets have a global unique identifier
@@ -161,6 +160,7 @@ impl Bucket {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(unused_imports)]
     use crate::crypto::{PublicKey, Secret};
 
     #[test]

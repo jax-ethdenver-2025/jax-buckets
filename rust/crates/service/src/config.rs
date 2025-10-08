@@ -54,5 +54,6 @@ impl Default for Config {
 }
 
 // TODO (amiller68): real error handling
+#[allow(dead_code)]
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {}

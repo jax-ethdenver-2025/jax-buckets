@@ -9,6 +9,7 @@ use sqlx::SqlitePool;
 #[derive(Clone)]
 pub struct Database(SqlitePool);
 
+#[allow(dead_code)]
 pub type DatabaseConnection = sqlx::SqliteConnection;
 
 impl Database {

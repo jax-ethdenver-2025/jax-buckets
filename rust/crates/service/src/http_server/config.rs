@@ -24,6 +24,7 @@ impl Default for Config {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     #[error("Invalid URL: {0}")]

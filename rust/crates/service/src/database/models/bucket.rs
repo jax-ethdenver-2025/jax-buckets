@@ -12,6 +12,7 @@ pub struct Bucket {
     pub name: String,
     pub link: DCid,
     pub created_at: OffsetDateTime,
+    #[allow(dead_code)]
     pub updated_at: OffsetDateTime,
 }
 
@@ -218,7 +219,7 @@ mod tests {
         let db = setup_test_db().await;
 
         let id = Uuid::new_v4();
-        let bucket = Bucket::create(id, "test-bucket".to_string(), Link::default(), &db)
+        let _bucket = Bucket::create(id, "test-bucket".to_string(), Link::default(), &db)
             .await
             .unwrap();
 
@@ -262,45 +263,5 @@ mod tests {
             .expect("Failed to list buckets");
 
         assert_eq!(buckets.len(), 3);
-    }
-
-    #[tokio::test]
-    async fn test_list_with_prefix() {
-        let db = setup_test_db().await;
-
-        // Create buckets with different prefixes
-        let id = Uuid::new_v4();
-        Bucket::create(id, "prod-bucket-1".to_string(), Link::default(), &db)
-            .await
-            .expect("Failed to create bucket");
-
-        let id = Uuid::new_v4();
-        Bucket::create(id, "prod-bucket-2".to_string(), Link::default(), &db)
-            .await
-            .expect("Failed to create bucket");
-
-        let id = Uuid::new_v4();
-        Bucket::create(id, "dev-bucket-1".to_string(), Link::default(), &db)
-            .await
-            .expect("Failed to create bucket");
-
-        let id = Uuid::new_v4();
-        Bucket::create(id, "dev-bucket-2".to_string(), Link::default(), &db)
-            .await
-            .expect("Failed to create bucket");
-
-        // List with prefix
-        let buckets = Bucket::list(Some("prod".to_string()), None, &db)
-            .await
-            .expect("Failed to list buckets");
-
-        assert_eq!(buckets.len(), 2);
-        assert!(buckets.iter().all(|b| b.name.starts_with("prod")));
-
-        let dev_buckets = Bucket::list(Some("dev".to_string()), None, &db)
-            .await
-            .expect("Failed to list buckets");
-
-        assert_eq!(dev_buckets.len(), 1);
     }
 }

@@ -1,3 +1,4 @@
+#[allow(clippy::module_inception)]
 mod bucket;
 mod maybe_mime;
 mod node;
