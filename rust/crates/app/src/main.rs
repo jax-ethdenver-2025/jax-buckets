@@ -1,14 +1,16 @@
 mod args;
 mod op;
 mod ops;
+mod state;
 
 use args::Args;
 use clap::{Parser, Subcommand};
 use op::Op;
-use ops::{Bucket, Service, Version};
+use ops::{Bucket, Init, Service, Version};
 
 command_enum! {
     (Bucket, Bucket),
+    (Init, Init),
     (Service, Service),
     (Version, Version),
 }

@@ -88,6 +88,10 @@ uuid = { version = "1.8", features = ["v4", "serde"] }
 thiserror = "1.0"
 parking_lot = "0.12"
 tokio-util = { version = "0.7", features = ["io"] }
+directories = "5.0"
+dirs = "5.0"
+toml = "0.8"
+pem = "3.0"
 
 
 # Database (for crates that need it)
