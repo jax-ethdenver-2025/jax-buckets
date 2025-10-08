@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-container">
+    <div class="card">
+        <div class="card-header">
+            <i class="fas fa-search"></i>
+            <h2>Query Blob Locations</h2>
+        </div>
+        
+        <form id="queryForm" class="mb-4">
+            <div class="form-group">
+                <label for="hash">Blob Hash</label>
+                <div class="search-input-group">
+                    <input type="text" 
+                           class="form-control" 
+                           id="hash" 
+                           placeholder="Enter blob hash..."
+                           required>
+                    <button type="submit" class="button button-primary">
+                        <i class="fas fa-search"></i>
+                        Query
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <div id="results" class="d-none">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-list"></i>
+                    <h2>Results</h2>
+                </div>
+                <div class="results-content">
+                    <p id="localStatus"></p>
+                    <p id="nodeCount"></p>
+                    <div id="nodeList" class="node-list"></div>
+                    <div class="mt-3">
+                        <button id="downloadBtn" class="button button-primary d-none">
+                            <i class="fas fa-download"></i>
+                            Download Blob
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Get hash from URL query parameters and fill input field
+document.addEventListener('DOMContentLoaded', function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const hashParam = urlParams.get('hash');
+    if (hashParam) {
+        document.getElementById('hash').value = hashParam;
+        // Trigger the query automatically if hash is provided
+        document.getElementById('queryForm').dispatchEvent(new Event('submit'));
+    }
+});
+
+document.getElementById('queryForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const hash = document.getElementById('hash').value;
+    const results = document.getElementById('results');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    try {
+        const response = await fetch(`/api/v0/query/${hash}`);
+        const data = await response.json();
+
+        if (response.ok) {
+            results.classList.remove('d-none');
+            
+            // Update local status with more descriptive message
+            const localStatusEl = document.getElementById('localStatus');
+            if (data.local) {
+                localStatusEl.innerHTML = '<i class="fas fa-check-circle text-success"></i> Available locally - can download directly';
+                localStatusEl.classList.add('status-success');
+            } else {
+                localStatusEl.innerHTML = '<i class="fas fa-cloud text-warning"></i> Not available locally - will need to fetch from network';
+                localStatusEl.classList.add('status-warning');
+            }
+
+            // Update remote nodes info
+            document.getElementById('nodeCount').textContent = 
+                `Found ${data.nodes.length} remote nodes hosting this blob`;
+
+            const nodeList = document.getElementById('nodeList');
+            nodeList.innerHTML = data.nodes
+                .map(([node, trust]) => `
+                    <div class="node-item">
+                        <i class="fas fa-server"></i>
+                        <div class="node-details">
+                            <div class="node-id">${node}</div>
+                            <div class="node-trust">Trust: ${trust.toFixed(3)}</div>
+                        </div>
+                    </div>
+                `).join('');
+
+            // Show download button if blob exists locally or on remote nodes
+            if (data.local || data.nodes.length > 0) {
+                downloadBtn.classList.remove('d-none');
+                downloadBtn.onclick = () => downloadBlob(hash);
+                downloadBtn.innerHTML = data.local ? 
+                    '<i class="fas fa-download"></i> Download Local Blob' :
+                    '<i class="fas fa-cloud-download-alt"></i> Fetch and Download Blob';
+            } else {
+                downloadBtn.classList.add('d-none');
+            }
+        } else {
+            throw new Error(data.error);
+        }
+    } catch (err) {
+        results.classList.remove('d-none');
+        document.getElementById('localStatus').innerHTML = 
+            `<i class="fas fa-exclamation-circle text-error"></i> Error: ${err.message}`;
+    }
+});
+
+async function downloadBlob(hash) {
+    try {
+        const response = await fetch(`/api/v0/pull/${hash}`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/octet-stream'
+            }
+        });
+        
+        if (!response.ok) {
+            if (response.headers.get('content-type')?.includes('application/json')) {
+                const error = await response.json();
+                throw new Error(error.error);
+            }
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const filename = response.headers.get('content-disposition')?.split('filename=')[1] || `blob-${hash}`;
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+    } catch (err) {
+        alert(`Download failed: ${err.message}`);
+    }
+}
+</script>
+
+<style>
+.search-input-group {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.search-input-group input {
+    flex: 1;
+}
+
+.form-control {
+    background: var(--background);
+    border: 1px solid var(--border);
+    color: var(--primary);
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    font-family: inherit;
+    width: 100%;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary);
+}
+
+.results-content {
+    padding: 1rem 0;
+}
+
+.status-success {
+    color: #6EE7B7;
+}
+
+.status-warning {
+    color: #FCD34D;
+}
+
+.node-list {
+    margin: 1rem 0;
+}
+
+.node-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    margin-bottom: 0.5rem;
+    background: var(--background);
+}
+
+.node-item i {
+    color: var(--primary);
+    opacity: 0.8;
+}
+
+.node-details {
+    flex: 1;
+}
+
+.node-id {
+    color: var(--primary);
+    font-family: monospace;
+    margin-bottom: 0.25rem;
+}
+
+.node-trust {
+    color: var(--muted);
+    font-size: 0.875rem;
+}
+
+.text-success {
+    color: #6EE7B7;
+}
+
+.text-warning {
+    color: #FCD34D;
+}
+
+.text-error {
+    color: #EF4444;
+}
+
+.mt-3 {
+    margin-top: 1rem;
+}
+
+.d-none {
+    display: none;
+}
+</style>
+{% endblock %} 

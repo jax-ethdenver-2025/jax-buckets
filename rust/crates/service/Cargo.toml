@@ -13,6 +13,9 @@ build = "build.rs"
 # Workspace crates
 common = { path = "../common" }
 
+# optional clap support for CLI usage
+clap = { workspace = true, optional = true }
+
 # web + service
 axum = { workspace = true, features = ["macros"] }
 axum-extra = { version = "^0.10", features = ["typed-header"] }
@@ -32,7 +35,8 @@ askama = { workspace = true }
 askama_axum = { workspace = true }
 
 # sql
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "time", "macros", "uuid"] }
+time = { workspace = true }
 
 # core
 anyhow = { workspace = true }
@@ -42,9 +46,15 @@ serde_json = { workspace = true }
 url.workspace = true
 http.workspace = true
 futures.workspace = true
+reqwest = { workspace = true, features = ["json"] }
+uuid = { workspace = true, features = ["v4"] }
+chrono = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 
 [build-dependencies]
 chrono = { workspace = true }
+
+[features]
+clap = ["dep:clap"]

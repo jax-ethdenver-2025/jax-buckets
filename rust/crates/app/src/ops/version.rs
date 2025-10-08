@@ -16,7 +16,7 @@ impl crate::op::Op for Version {
     type Error = VersionError;
     type Output = String;
 
-    async fn execute(&self) -> Result<Self::Output, Self::Error> {
+    async fn execute(&self, _ctx: &crate::op::OpContext) -> Result<Self::Output, Self::Error> {
         Ok(build_info!().to_string())
     }
 }

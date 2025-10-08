@@ -12,6 +12,7 @@ mod blobs_store;
 pub use blobs_store::{BlobsStore, BlobsStoreError};
 
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct NodeBuilder {
     /// the socket addr to expose the peer on
     ///  if not set, an ephemeral port will be used
@@ -26,15 +27,6 @@ pub struct NodeBuilder {
     blobs_store_path: Option<PathBuf>,
 }
 
-impl Default for NodeBuilder {
-    fn default() -> Self {
-        NodeBuilder {
-            socket_addr: None,
-            secret_key: None,
-            blobs_store_path: None,
-        }
-    }
-}
 
 // TODO (amiller68): proper errors
 impl NodeBuilder {
@@ -67,7 +59,7 @@ impl NodeBuilder {
             .socket_addr
             .unwrap_or_else(|| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0));
         // generate a new secret key if not set
-        let secret_key = self.secret_key.unwrap_or_else(|| SecretKey::generate());
+        let secret_key = self.secret_key.unwrap_or_else(SecretKey::generate);
         // and set the blobs store path to a temporary directory if not set
         let blobs_store_path = self.blobs_store_path.unwrap_or_else(|| {
             // Create a temporary directory for the blobs store

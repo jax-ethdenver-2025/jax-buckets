@@ -4,6 +4,7 @@ use tower_http::trace::TraceLayer;
 use tower_http::trace::{DefaultOnFailure, DefaultOnResponse};
 use tower_http::LatencyUnit;
 
+pub mod api;
 mod config;
 mod handlers;
 mod health;
@@ -15,6 +16,7 @@ use crate::ServiceState;
 
 const HTML_PREFIX: &str = "/";
 const HEALTH_PREFIX: &str = "/_status";
+const API_PREFIX: &str = "/api";
 
 pub async fn run(
     config: Config,
@@ -33,10 +35,11 @@ pub async fn run(
         .on_failure(DefaultOnFailure::new().latency_unit(LatencyUnit::Micros));
 
     let root_router = Router::new()
-        .nest(HTML_PREFIX, html::router())
-        // .nest(HEALTH_PREFIX, health::router(state.clone()))
-        // .with_state(state)
-        // .fallback(handlers::not_found_handler)
+        .nest(HEALTH_PREFIX, health::router(state.clone()))
+        .nest(HTML_PREFIX, html::router(state.clone()))
+        .nest(API_PREFIX, api::router(state.clone()))
+        .fallback(handlers::not_found_handler)
+        .with_state(state)
         .layer(trace_layer);
 
     tracing::info!(addr = ?listen_addr, "server listening");

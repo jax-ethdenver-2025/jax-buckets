@@ -32,6 +32,18 @@ impl Deref for PublicKey {
     }
 }
 
+impl From<PPublicKey> for PublicKey {
+    fn from(key: PPublicKey) -> Self {
+        PublicKey(key)
+    }
+}
+
+impl From<PublicKey> for PPublicKey {
+    fn from(key: PublicKey) -> Self {
+        key.0
+    }
+}
+
 impl From<[u8; PUBLIC_KEY_SIZE]> for PublicKey {
     fn from(bytes: [u8; PUBLIC_KEY_SIZE]) -> Self {
         PublicKey(PPublicKey::from_bytes(&bytes).expect("valid public key"))

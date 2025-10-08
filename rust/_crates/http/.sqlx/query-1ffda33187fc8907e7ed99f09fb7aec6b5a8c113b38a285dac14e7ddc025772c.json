@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO root_cids (\n                cid,\n                previous_cid,\n                created_at\n            )\n            VALUES (\n                $1,\n                $2,\n                CURRENT_TIMESTAMP\n            )\n            RETURNING cid as \"cid: DCid\", previous_cid as \"previous_cid: DCid\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "cid: DCid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "previous_cid: DCid",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "1ffda33187fc8907e7ed99f09fb7aec6b5a8c113b38a285dac14e7ddc025772c"
+}

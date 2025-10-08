@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Jax Node</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav>
+        <div class="container">
+            <a href="/" class="logo">
+                <i class="fas fa-database"></i>
+                <span>jax</span>
+            </a>
+            <div>
+                <a href="/blobs">Blobs</a>
+                <a href="/pools">Pools</a>
+                <a href="/share">Share</a>
+                <a href="/query">Query</a>
+            </div>
+        </div>
+    </nav>
+    
+    <div class="main-content">
+        {% block content %}{% endblock %}
+    </div>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2025 jax protocol</p>
+            <div>
+                <a href="#">Terms</a>
+                <a href="#" style="margin-left: 1.5rem;">Privacy</a>
+                <a href="#" style="margin-left: 1.5rem;">Docs</a>
+            </div>
+        </div>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html> 

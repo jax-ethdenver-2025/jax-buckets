@@ -17,7 +17,7 @@ impl crate::op::Op for Service {
     type Error = ServiceError;
     type Output = String;
 
-    async fn execute(&self) -> Result<Self::Output, Self::Error> {
+    async fn execute(&self, _ctx: &crate::op::OpContext) -> Result<Self::Output, Self::Error> {
         spawn_service(&ServiceConfig::default()).await;
         Ok("service ended".to_string())
     }

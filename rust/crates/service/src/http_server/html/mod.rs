@@ -7,10 +7,9 @@ use tower_http::cors::{Any, CorsLayer};
 mod blobs;
 mod index;
 
-// use crate::state::ServiceState;
+use crate::ServiceState;
 
-// pub fn router(state: AppState) -> Router<AppState> {
-pub fn router() -> Router<()> {
+pub fn router(state: ServiceState) -> Router<ServiceState> {
     let cors_layer = CorsLayer::new()
         .allow_methods(vec![Method::GET])
         .allow_headers(vec![ACCEPT, ORIGIN])
@@ -20,6 +19,6 @@ pub fn router() -> Router<()> {
     Router::new()
         .route("/", get(index::handler))
         .route("/blobs", get(blobs::handler))
-        // .with_state(state)
+        .with_state(state)
         .layer(cors_layer)
 }

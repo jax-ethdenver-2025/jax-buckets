@@ -1,5 +1,5 @@
 mod database;
-mod http_server;
+pub mod http_server;
 mod process;
 
 mod config;

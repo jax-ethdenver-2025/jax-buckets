@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT id as \"id!: Uuid\", name as \"name!\", link as \"link!: DCid\", created_at as \"created_at!\", updated_at as \"updated_at!\"\n                FROM buckets\n                WHERE name LIKE $1\n                ORDER BY created_at DESC\n                LIMIT $2\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "name!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "link!: DCid",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!",
+        "ordinal": 3,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!",
+        "ordinal": 4,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "5a9a68e78f68a67929e1c1f2aa8d8f4ea2bb4f1af1fcb5305525aedb0f0b453a"
+}

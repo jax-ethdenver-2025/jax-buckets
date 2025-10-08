@@ -1,0 +1,78 @@
+[package]
+name = "leaky-server"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+leaky-common = { path = "../mount" }
+
+anyhow = "1.0.80"
+axum = { version = "0.7", features = ["macros"] }
+console_error_panic_hook = "0.1"
+dotenvy = "^0.15"
+futures = "^0.3"
+image = "0.24"
+bytes = "1.0"
+pico-args = "0.5.0"
+sqlx = { version = "0.8", features = [
+  "runtime-tokio",
+  "sqlite",
+  "time",
+  "uuid",
+  "macros",
+] }
+tokio = { version = "^1", features = [
+  "rt-multi-thread",
+  "macros",
+  "net",
+  "signal",
+  "sync",
+  "time",
+] }
+tower = { version = "0.4", features = [
+  "load-shed",
+  "limit",
+  "timeout",
+  "util",
+] }
+tower-http = { version = "0.5", features = [
+  "fs",
+  "cors",
+  "sensitive-headers",
+  "trace",
+  "limit",
+  "util",
+] }
+uuid = { version = "1.8.0", features = ["serde"] }
+thiserror = "1"
+http = "1"
+
+tracing = { version = "0.1" }
+tracing-appender = { version = "^0.2" }
+tracing-futures = { version = "^0.2", default-features = false, features = [
+  "std-future",
+] }
+tracing-subscriber = { version = "^0.3", default-features = false, features = [
+  "env-filter",
+  "fmt",
+  "local-time",
+  "time",
+  "tracing",
+] }
+cid = { version = "0.11.1", features = ["serde"] }
+url = "2.5.0"
+serde = "1.0.197"
+time = { version = "0.3.36", features = ["serde"] }
+multibase = "0.9.1"
+serde_json = "1.0.115"
+axum-extra = { version = "0.9.3", features = ["typed-header"] }
+hyper = { version = "1.3.1", features = ["client"] }
+tokio-util = { version = "0.7", features = ["io"] }
+http-body-util = "0.1.1"
+pulldown-cmark = "0.12.1"
+regex = "1.10.6"
+parking_lot = "0.12.3"
+scopeguard = "1.2"

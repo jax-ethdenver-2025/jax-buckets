@@ -443,7 +443,10 @@ impl Mount {
         Ok(link)
     }
 
-    async fn _put_bucket_in_blobs(bucket: &Bucket, blobs: &BlobsStore) -> Result<Link, MountError> {
+    pub async fn _put_bucket_in_blobs(
+        bucket: &Bucket,
+        blobs: &BlobsStore,
+    ) -> Result<Link, MountError> {
         let data = bucket.encode()?;
         let hash = blobs.put(data).await?;
         // NOTE (amiller68): buckets are unencrypted, so they can inherit

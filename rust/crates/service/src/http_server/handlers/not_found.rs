@@ -1,36 +1,27 @@
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use axum_extra::headers::ContentType;
-use axum_extra::TypedHeader;
 
-pub async fn not_found_handler(content_type: Option<TypedHeader<ContentType>>) -> Response {
-    match content_type {
-        Some(TypedHeader(content_type)) => {
-            let content_type = content_type.to_string();
-            match content_type.as_str() {
-                "application/json" => {
-                    let err_msg = serde_json::json!({"msg": "not found"});
-                    (StatusCode::NOT_FOUND, Json(err_msg)).into_response()
-                }
-                "text/html" => {
-                    let body = "<h1>Not Found</h1>";
-                    (
-                        StatusCode::NOT_FOUND,
-                        [(axum::http::header::CONTENT_TYPE, "text/html")],
-                        body,
-                    )
-                        .into_response()
-                }
-                _ => (
-                    StatusCode::NOT_FOUND,
-                    [(axum::http::header::CONTENT_TYPE, "text/plain")],
-                    "not found",
-                )
-                    .into_response(),
-            }
+pub async fn not_found_handler(headers: HeaderMap) -> Response {
+    let accept = headers
+        .get(axum::http::header::ACCEPT)
+        .and_then(|v| v.to_str().ok());
+
+    match accept {
+        Some(accept_str) if accept_str.contains("application/json") => {
+            let err_msg = serde_json::json!({"msg": "not found"});
+            (StatusCode::NOT_FOUND, Json(err_msg)).into_response()
         }
-        None => (
+        Some(accept_str) if accept_str.contains("text/html") => {
+            let body = "<h1>Not Found</h1>";
+            (
+                StatusCode::NOT_FOUND,
+                [(axum::http::header::CONTENT_TYPE, "text/html")],
+                body,
+            )
+                .into_response()
+        }
+        _ => (
             StatusCode::NOT_FOUND,
             [(axum::http::header::CONTENT_TYPE, "text/plain")],
             "not found",

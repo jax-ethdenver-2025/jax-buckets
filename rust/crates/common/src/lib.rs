@@ -34,8 +34,10 @@ mod node;
 pub mod version;
 
 pub mod prelude {
+    pub use crate::bucket::Bucket;
     pub use crate::crypto::{PublicKey, SecretKey};
     pub use crate::linked_data::{multibase, Cid, CidError, Link};
+    pub use crate::mount::{Mount, MountError};
     pub use crate::node::Node;
     pub use crate::version::build_info;
 }

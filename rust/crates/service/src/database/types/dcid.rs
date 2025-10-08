@@ -4,11 +4,29 @@ use sqlx::error::BoxDynError;
 use sqlx::sqlite::{SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef};
 use sqlx::{Decode, Encode, Sqlite, Type};
 
-use common::prelude::{multibase::Base, Cid};
+use common::prelude::{multibase::Base, Cid, Link};
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq, Hash)]
 #[serde(transparent)]
 pub struct DCid(Cid);
+
+impl Default for DCid {
+    fn default() -> Self {
+        Self(Link::default().into())
+    }
+}
+
+impl From<DCid> for Link {
+    fn from(val: DCid) -> Self {
+        Link::from(val.0)
+    }
+}
+
+impl From<Link> for DCid {
+    fn from(link: Link) -> Self {
+        Self(Cid::from(link))
+    }
+}
 
 impl From<DCid> for Cid {
     fn from(val: DCid) -> Self {
