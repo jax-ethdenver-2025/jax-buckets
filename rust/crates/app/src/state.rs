@@ -14,14 +14,17 @@ pub const BLOBS_DIR_NAME: &str = "blobs";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
-    /// Default listen address for the service
-    pub listen_addr: String,
+    /// Listen address for the HTML server
+    pub html_listen_addr: String,
+    /// Listen address for the API server
+    pub api_listen_addr: String,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            listen_addr: "0.0.0.0:8080".to_string(),
+            html_listen_addr: "0.0.0.0:8080".to_string(),
+            api_listen_addr: "0.0.0.0:3000".to_string(),
         }
     }
 }

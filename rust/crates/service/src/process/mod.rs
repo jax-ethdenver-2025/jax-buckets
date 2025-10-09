@@ -1,5 +1,7 @@
 mod utils;
 
+use std::net::SocketAddr;
+use std::str::FromStr;
 use std::time::Duration;
 
 use futures::future::join_all;
@@ -41,17 +43,38 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
 
     let mut handles = Vec::new();
 
-    // Start HTTP server
-    let http_state = state.clone();
-    let http_config = http_server::Config::default();
-    let http_rx = shutdown_rx.clone();
-    let http_handle = tokio::spawn(async move {
-        tracing::info!("Starting HTTP server");
-        if let Err(e) = http_server::run(http_config, http_state, http_rx).await {
-            tracing::error!("HTTP server error: {}", e);
+    // Get listen addresses from config
+    let html_listen_addr = service_config.html_listen_addr.unwrap_or_else(|| {
+        SocketAddr::from_str("0.0.0.0:8080").unwrap()
+    });
+    let api_listen_addr = service_config.api_listen_addr.unwrap_or_else(|| {
+        SocketAddr::from_str("0.0.0.0:3000").unwrap()
+    });
+
+    // Start HTML server
+    let html_state = state.clone();
+    let api_url = format!("http://localhost:{}", api_listen_addr.port());
+    let html_config = http_server::Config::new(html_listen_addr, Some(api_url));
+    let html_rx = shutdown_rx.clone();
+    let html_handle = tokio::spawn(async move {
+        tracing::info!("Starting HTML server on {}", html_listen_addr);
+        if let Err(e) = http_server::run_html(html_config, html_state, html_rx).await {
+            tracing::error!("HTML server error: {}", e);
         }
     });
-    handles.push(http_handle);
+    handles.push(html_handle);
+
+    // Start API server
+    let api_state = state.clone();
+    let api_config = http_server::Config::new(api_listen_addr, None);
+    let api_rx = shutdown_rx.clone();
+    let api_handle = tokio::spawn(async move {
+        tracing::info!("Starting API server on {}", api_listen_addr);
+        if let Err(e) = http_server::run_api(api_config, api_state, api_rx).await {
+            tracing::error!("API server error: {}", e);
+        }
+    });
+    handles.push(api_handle);
 
     // spawn a router for the node
     let node_state = state.clone();

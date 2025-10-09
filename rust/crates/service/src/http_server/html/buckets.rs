@@ -1,0 +1,91 @@
+use askama::Template;
+use askama_axum::IntoResponse;
+use axum::extract::State;
+use axum::http::HeaderMap;
+use axum::Extension;
+use tracing::instrument;
+
+use crate::http_server::Config;
+use crate::mount_ops;
+use crate::ServiceState;
+
+#[derive(Template)]
+#[template(path = "buckets.html")]
+pub struct BucketsTemplate {
+    pub buckets: Vec<BucketDisplayInfo>,
+    pub read_only: bool,
+    pub api_url: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct BucketDisplayInfo {
+    pub bucket_id: String,
+    pub name: String,
+    pub created_at: String,
+}
+
+#[instrument(skip(state, config))]
+pub async fn handler(
+    State(state): State<ServiceState>,
+    Extension(config): Extension<Config>,
+    headers: HeaderMap,
+) -> askama_axum::Response {
+    // Check if request host matches configured hostname
+    let read_only = if let Some(host_header) = headers.get("host") {
+        if let Ok(host_str) = host_header.to_str() {
+            // Extract hostname from config (without scheme/port)
+            let config_host = config.hostname.host_str().unwrap_or("localhost");
+            let config_port = config.hostname.port().unwrap_or(8080);
+            let expected_host = format!("{}:{}", config_host, config_port);
+
+            // Compare with request host
+            host_str != expected_host && host_str != "localhost:8080"
+        } else {
+            true // If we can't parse the host, assume read-only for safety
+        }
+    } else {
+        true // No host header, assume read-only for safety
+    };
+
+    // Load buckets from database using mount_ops
+    let buckets = match mount_ops::list_buckets(&state).await {
+        Ok(buckets) => buckets,
+        Err(e) => {
+            tracing::error!("Failed to list buckets: {}", e);
+            return error_response("Failed to load buckets");
+        }
+    };
+
+    // Convert to display format
+    let display_buckets: Vec<BucketDisplayInfo> = buckets
+        .into_iter()
+        .map(|b| BucketDisplayInfo {
+            bucket_id: b.bucket_id.to_string(),
+            name: b.name,
+            created_at: format_timestamp(b.created_at),
+        })
+        .collect();
+
+    let api_url = config.api_url.clone().unwrap_or_else(|| "http://localhost:3000".to_string());
+
+    let template = BucketsTemplate {
+        buckets: display_buckets,
+        read_only,
+        api_url,
+    };
+
+    template.into_response()
+}
+
+fn format_timestamp(ts: time::OffsetDateTime) -> String {
+    ts.format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| ts.to_string())
+}
+
+fn error_response(message: &str) -> askama_axum::Response {
+    (
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        format!("Error: {}", message),
+    )
+        .into_response()
+}

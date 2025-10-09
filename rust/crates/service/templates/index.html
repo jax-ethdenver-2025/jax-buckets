@@ -11,9 +11,7 @@
         </div>
         <div class="info-box">
             <p><strong>Node ID:</strong> <span class="text-primary">{{ node_id }}</span></p>
-            <p><strong>ETH Address:</strong> <span class="text-primary">{{ eth_address }}</span></p>
-            <!-- TODO (amiller68): is this wei ? / convert to ETH -->
-            <p><strong>ETH Balance:</strong> <span class="text-primary">{{ eth_balance }} wei</span></p>
+            <p><strong>Blobs Path:</strong> <span class="text-primary">{{ blobs_path }}</span></p>
         </div>
     </div>
 
@@ -23,21 +21,9 @@
             <h2>Quick Actions</h2>
         </div>
         <div class="actions">
-            <a href="/blobs" class="button button-primary">
-                <i class="fas fa-database"></i>
-                View Blobs
-            </a>
-            <a href="/pools" class="button">
-                <i class="fas fa-layer-group"></i>
-                View Pools
-            </a>
-            <a href="/share" class="button">
-                <i class="fas fa-share-alt"></i>
-                Share Content
-            </a>
-            <a href="/query" class="button">
-                <i class="fas fa-search"></i>
-                Query Content
+            <a href="/buckets" class="button button-primary">
+                <i class="fas fa-folder"></i>
+                View Buckets
             </a>
         </div>
     </div>

@@ -33,8 +33,8 @@ impl crate::op::Op for Service {
             node_listen_addr: None, // Use ephemeral port for now, can be configured later
             node_secret: Some(secret_key),
             node_blobs_store_path: Some(state.blobs_path),
-            http_listen_addr: state.config.listen_addr.parse().ok(),
-            http_hostname: None,
+            html_listen_addr: state.config.html_listen_addr.parse().ok(),
+            api_listen_addr: state.config.api_listen_addr.parse().ok(),
             sqlite_path: Some(state.db_path),
             log_level: tracing::Level::INFO,
         };

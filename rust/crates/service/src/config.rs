@@ -4,7 +4,6 @@ use std::{
 };
 
 use common::prelude::SecretKey;
-use url::Url;
 
 #[derive(Debug)]
 pub struct Config {
@@ -20,15 +19,12 @@ pub struct Config {
     pub node_blobs_store_path: Option<PathBuf>,
 
     // http server configuration
-    // TODO (amiller68): maybe do some specific configuration error handling
-    //  based on whether one and not the other is provided
-    /// address for our http server to listen on.
+    /// address for the HTML server to listen on.
     ///  if not set then 0.0.0.0:8080 will be used
-    pub http_listen_addr: Option<SocketAddr>,
-    /// hostname that our server will assume its
-    ///  responding from. if not set then the listen
-    ///  address will be used
-    pub http_hostname: Option<Url>,
+    pub html_listen_addr: Option<SocketAddr>,
+    /// address for the API server to listen on.
+    ///  if not set then 0.0.0.0:3000 will be used
+    pub api_listen_addr: Option<SocketAddr>,
 
     // data store configuration
     /// a path to a sqlite database, if not set then an
@@ -45,8 +41,8 @@ impl Default for Config {
             node_listen_addr: None,
             node_secret: None,
             node_blobs_store_path: None,
-            http_listen_addr: Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8080)),
-            http_hostname: None,
+            html_listen_addr: Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8080)),
+            api_listen_addr: Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 3000)),
             sqlite_path: None,
             log_level: tracing::Level::INFO,
         }

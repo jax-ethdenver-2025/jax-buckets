@@ -4,7 +4,9 @@ use http::header::{ACCEPT, ORIGIN};
 use http::Method;
 use tower_http::cors::{Any, CorsLayer};
 
-mod blobs;
+mod bucket_explorer;
+mod buckets;
+mod file_viewer;
 mod index;
 
 use crate::ServiceState;
@@ -18,7 +20,9 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
 
     Router::new()
         .route("/", get(index::handler))
-        .route("/blobs", get(blobs::handler))
+        .route("/buckets", get(buckets::handler))
+        .route("/buckets/:bucket_id", get(bucket_explorer::handler))
+        .route("/buckets/:bucket_id/view", get(file_viewer::handler))
         .with_state(state)
         .layer(cors_layer)
 }

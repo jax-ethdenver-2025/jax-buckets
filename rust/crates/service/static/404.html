@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <title>{% block title %}Jax Tracker{% endblock %}</title>
-    
+    <title>404 - Page Not Found | Jax</title>
+
     <!-- Inter font -->
     <link rel="preconnect" href="https://rsms.me/" />
     <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-    
+
     <style>
       :root {
         font-family: Inter, sans-serif;
@@ -26,34 +25,11 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/css/core.min.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/css/utilities.min.css" />
 
-    <script>
-      const htmlElement = document.documentElement;
-      const __FRANKEN__ = JSON.parse(localStorage.getItem("__FRANKEN__") || "{}");
-
-      if (__FRANKEN__.mode === "dark" || (!__FRANKEN__.mode && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
-        htmlElement.classList.add("dark");
-      } else {
-        htmlElement.classList.remove("dark");
-      }
-
-      if (__FRANKEN__.theme) {
-        htmlElement.classList.add(__FRANKEN__.theme);
-      }
-      htmlElement.classList.add(__FRANKEN__.radii || "uk-radii-md");
-      htmlElement.classList.add(__FRANKEN__.shadows || "uk-shadows-sm");
-      htmlElement.classList.add(__FRANKEN__.font || "uk-font-sm");
-      htmlElement.classList.add(__FRANKEN__.chart || "uk-chart-default");
-    </script>
-
-    <script type="module" src="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/js/core.iife.js"></script>
-    
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
-    
+
     <!-- Custom styles -->
     <link rel="stylesheet" href="/static/style.css">
-    
-    {% block head %}{% endblock %}
 </head>
 <body class="bg-background text-foreground flex flex-col min-h-screen">
     <nav class="border-b bg-background">
@@ -70,9 +46,28 @@
         </div>
     </nav>
 
-    <main class="flex-1 p-8">
-        <div class="container mx-auto">
-            {% block content %}{% endblock %}
+    <main class="flex-1 flex items-center justify-center p-8">
+        <div class="max-w-2xl mx-auto text-center space-y-6">
+            <div class="text-primary">
+                <i class="fas fa-exclamation-triangle text-8xl mb-4"></i>
+            </div>
+
+            <h1 class="text-6xl font-bold">404</h1>
+
+            <h2 class="text-3xl font-semibold text-muted-foreground">Page Not Found</h2>
+
+            <p class="text-lg text-muted-foreground">
+                The page you're looking for doesn't exist or has been moved.
+            </p>
+
+            <div class="flex gap-4 justify-center pt-4">
+                <a href="/" class="button button-primary">
+                    <i class="fas fa-home"></i> Go Home
+                </a>
+                <a href="/buckets" class="button">
+                    <i class="fas fa-folder"></i> Browse Buckets
+                </a>
+            </div>
         </div>
     </main>
 
@@ -88,8 +83,5 @@
             </div>
         </div>
     </footer>
-
-    <script type="module" src="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/js/icon.iife.js"></script>
-    <script src="/static/app.js"></script>
 </body>
-</html> 
+</html>

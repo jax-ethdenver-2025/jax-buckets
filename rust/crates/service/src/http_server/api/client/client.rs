@@ -60,4 +60,14 @@ impl ApiClient {
                 )
             })
     }
+
+    /// Get the base URL for API requests
+    pub fn base_url(&self) -> &Url {
+        &self.remote
+    }
+
+    /// Get the underlying HTTP client for custom requests
+    pub fn http_client(&self) -> &Client {
+        &self.client
+    }
 }

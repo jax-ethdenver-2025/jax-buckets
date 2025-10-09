@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Buckets - Jax{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+    <div class="flex justify-between items-center">
+        <h1 class="text-3xl font-bold">Buckets</h1>
+    </div>
+
+    <!-- Create bucket form (only show if not read-only) -->
+    {% if !read_only %}
+    <div class="card">
+        <form id="createBucketForm" class="p-4 space-y-4">
+            <div>
+                <label for="bucketName" class="block text-sm font-medium mb-2">Bucket Name</label>
+                <input type="text" id="bucketName" name="name" class="uk-input" placeholder="my-bucket" required>
+            </div>
+            <button type="submit" class="button button-primary">
+                <i class="fas fa-plus"></i> Create Bucket
+            </button>
+        </form>
+        <div id="createStatus" class="p-4 hidden"></div>
+    </div>
+    {% endif %}
+
+    {% if buckets.is_empty() %}
+    <div class="card">
+        <div class="p-8 text-center text-muted-foreground">
+            <i class="fas fa-inbox text-4xl mb-4"></i>
+            <p>No buckets found</p>
+            <p class="text-sm">Create a bucket using the CLI to get started</p>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <table class="uk-table uk-table-divider uk-table-hover">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Bucket ID</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for bucket in buckets %}
+                <tr>
+                    <td>
+                        <a href="/buckets/{{ bucket.bucket_id }}" class="text-primary font-semibold hover:underline">
+                            <i class="fas fa-folder mr-2"></i>{{ bucket.name }}
+                        </a>
+                    </td>
+                    <td><code class="text-sm text-muted-foreground">{{ bucket.bucket_id }}</code></td>
+                    <td class="text-sm text-muted-foreground">{{ bucket.created_at }}</td>
+                    <td>
+                        <a href="/buckets/{{ bucket.bucket_id }}" class="button button-sm">
+                            <i class="fas fa-folder-open"></i> Browse
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block head %}
+<script>
+window.JAX_API_URL = '{{ api_url }}';
+</script>
+{% endblock %}

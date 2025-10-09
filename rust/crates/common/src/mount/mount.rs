@@ -415,6 +415,36 @@ impl Mount {
         }
     }
 
+    /// Get the NodeLink for a file at a given path
+    #[allow(clippy::await_holding_lock)]
+    pub async fn get(&self, path: &Path, blobs: &BlobsStore) -> Result<NodeLink, MountError> {
+        let path = clean_path(path);
+
+        let inner = self.0.lock();
+        let root_node = inner.root_node.clone();
+        drop(inner);
+
+        let (parent_path, file_name) = if let Some(parent) = path.parent() {
+            (
+                parent,
+                path.file_name().unwrap().to_string_lossy().to_string(),
+            )
+        } else {
+            return Err(MountError::PathNotFound(path.to_path_buf()));
+        };
+
+        let parent_node = if parent_path == Path::new("") {
+            root_node
+        } else {
+            Self::_get_node_at_path(&root_node, parent_path, blobs).await?
+        };
+
+        parent_node
+            .get_link(&file_name)
+            .cloned()
+            .ok_or_else(|| MountError::PathNotFound(path.to_path_buf()))
+    }
+
     async fn _get_node_at_path(
         node: &Node,
         path: &Path,

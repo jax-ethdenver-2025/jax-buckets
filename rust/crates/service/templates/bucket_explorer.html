@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}{{ bucket_name }} - Jax{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+    <!-- Breadcrumb navigation -->
+    <nav aria-label="Breadcrumb">
+        <ol class="flex items-center gap-2 text-sm">
+            <li><a href="/buckets" class="text-primary hover:underline">Buckets</a></li>
+            <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
+            <li><a href="/buckets/{{ bucket_id }}" class="text-primary hover:underline">{{ bucket_name }}</a></li>
+            {% for segment in path_segments %}
+            <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
+            <li><a href="/buckets/{{ bucket_id }}?path={{ segment.path }}" class="text-primary hover:underline">{{ segment.name }}</a></li>
+            {% endfor %}
+        </ol>
+    </nav>
+
+    <div class="flex justify-between items-center">
+        <h1 class="text-3xl font-bold">
+            <i class="fas fa-folder-open mr-2"></i>{{ bucket_name }}
+        </h1>
+        {% if current_path != "/" %}
+        <a href="{{ parent_path_url }}" class="button">
+            <i class="fas fa-arrow-up"></i> Up
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- Upload form (only show if not read-only) -->
+    {% if !read_only %}
+    <div class="card">
+        <form id="uploadForm" class="p-4 space-y-4">
+            <div>
+                <label for="fileInput" class="block text-sm font-medium mb-2">Select File</label>
+                <input type="file" id="fileInput" name="file" class="uk-input" required>
+            </div>
+            <div>
+                <label for="pathInput" class="block text-sm font-medium mb-2">Destination Directory</label>
+                <input type="text" id="pathInput" name="path" class="uk-input" value="{{ current_path }}">
+                <p class="text-xs text-muted-foreground mt-1">File will be uploaded to this directory</p>
+            </div>
+            <button type="submit" class="button button-primary">
+                <i class="fas fa-upload"></i> Upload
+            </button>
+        </form>
+        <div id="uploadStatus" class="p-4 hidden"></div>
+    </div>
+    {% endif %}
+
+    {% if items.is_empty() %}
+    <div class="card">
+        <div class="p-8 text-center text-muted-foreground">
+            <i class="fas fa-folder-open text-4xl mb-4"></i>
+            <p>This bucket is empty</p>
+            <p class="text-sm">Add files using the CLI to get started</p>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <table class="uk-table uk-table-divider uk-table-hover">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>MIME Type</th>
+                    <th>Link</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td>
+                        {% if item.is_dir %}
+                        <a href="/buckets/{{ bucket_id }}?path={{ item.path }}" class="text-primary font-semibold hover:underline">
+                            <i class="fas fa-folder text-yellow-500 mr-2"></i>{{ item.name }}
+                        </a>
+                        {% else %}
+                        <span class="font-semibold">
+                            <i class="fas fa-file text-blue-500 mr-2"></i>{{ item.name }}
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="text-sm text-muted-foreground">
+                        {% if item.is_dir %}
+                        <span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded">Directory</span>
+                        {% else %}
+                        <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded">File</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-xs text-muted-foreground">{{ item.mime_type }}</td>
+                    <td><code class="text-xs text-muted-foreground">{{ item.link }}</code></td>
+                    <td>
+                        {% if item.is_dir %}
+                        <a href="/buckets/{{ bucket_id }}?path={{ item.path }}" class="button button-sm">
+                            <i class="fas fa-folder-open"></i> Open
+                        </a>
+                        {% else %}
+                        <a href="/buckets/{{ bucket_id }}/view?path={{ item.path }}" class="button button-sm button-primary">
+                            <i class="fas fa-eye"></i> View
+                        </a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block head %}
+<script>
+window.JAX_API_URL = '{{ api_url }}';
+window.JAX_BUCKET_ID = '{{ bucket_id }}';
+</script>
+{% endblock %}

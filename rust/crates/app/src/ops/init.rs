@@ -25,13 +25,15 @@ impl crate::op::Op for Init {
              - Key: {}\n\
              - Blobs: {}\n\
              - Config: {}\n\
-             - Listen address: {}",
+             - HTML listen address: {}\n\
+             - API listen address: {}",
             state.jax_dir.display(),
             state.db_path.display(),
             state.key_path.display(),
             state.blobs_path.display(),
             state.config_path.display(),
-            state.config.listen_addr
+            state.config.html_listen_addr,
+            state.config.api_listen_addr
         );
 
         Ok(output)
