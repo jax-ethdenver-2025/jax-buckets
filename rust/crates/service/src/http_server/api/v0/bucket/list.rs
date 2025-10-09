@@ -40,22 +40,20 @@ pub struct BucketInfo {
 
 pub async fn handler(
     State(state): State<ServiceState>,
-    Json(req): Json<ListRequest>,
+    Json(_req): Json<ListRequest>,
 ) -> Result<impl IntoResponse, ListError> {
-    use crate::database::models::Bucket;
-
-    // List buckets from database
-    let buckets = Bucket::list(req.prefix, req.limit, state.database())
+    // Use mount_ops to list buckets
+    let buckets = crate::mount_ops::list_buckets(&state)
         .await
-        .map_err(|e| ListError::Database(e.to_string()))?;
+        .map_err(|e| ListError::MountOps(e.to_string()))?;
 
     // Convert to response format
     let bucket_infos = buckets
         .into_iter()
         .map(|b| BucketInfo {
-            bucket_id: b.id,
+            bucket_id: b.bucket_id,
             name: b.name,
-            link: b.link.into(),
+            link: b.link,
             created_at: b.created_at,
         })
         .collect();
@@ -71,14 +69,14 @@ pub async fn handler(
 
 #[derive(Debug, thiserror::Error)]
 pub enum ListError {
-    #[error("Database error: {0}")]
-    Database(String),
+    #[error("MountOps error: {0}")]
+    MountOps(String),
 }
 
 impl IntoResponse for ListError {
     fn into_response(self) -> Response {
         match self {
-            ListError::Database(_) => (
+            ListError::MountOps(_) => (
                 http::StatusCode::INTERNAL_SERVER_ERROR,
                 "unknown server error",
             )

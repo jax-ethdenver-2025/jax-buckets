@@ -35,10 +35,10 @@ pub async fn handler(
 ) -> askama_axum::Response {
     let file_path = query.path;
 
-    // Get bucket info
-    let bucket = match get_bucket_info(bucket_id, &state).await {
+    // Get bucket info using mount_ops
+    let bucket = match mount_ops::get_bucket_info(bucket_id, &state).await {
         Ok(bucket) => bucket,
-        Err(e) => return error_response(&e),
+        Err(e) => return error_response(&format!("{}", e)),
     };
 
     // Get file content
@@ -114,20 +114,6 @@ pub async fn handler(
     };
 
     template.into_response()
-}
-
-async fn get_bucket_info(
-    bucket_id: Uuid,
-    state: &ServiceState,
-) -> Result<crate::mount_ops::BucketInfo, String> {
-    let buckets = mount_ops::list_buckets(state)
-        .await
-        .map_err(|e| format!("Failed to load buckets: {}", e))?;
-
-    buckets
-        .into_iter()
-        .find(|b| b.bucket_id == bucket_id)
-        .ok_or_else(|| format!("Bucket not found: {}", bucket_id))
 }
 
 fn build_back_url(file_path: &str, bucket_id: &Uuid) -> String {

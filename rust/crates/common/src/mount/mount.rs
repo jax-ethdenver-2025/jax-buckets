@@ -145,27 +145,17 @@ impl Mount {
     ) -> Result<Self, MountError> {
         let public_key = &secret_key.public();
 
-        println!("Loading mount");
-
         let bucket = Self::_get_bucket_from_blobs(link, blobs).await?;
 
-        println!("bucket loaded from blobs");
-
         let _bucket_share = bucket.get_share(public_key);
-
-        println!("bucket share loaded");
 
         if _bucket_share.is_none() {
             return Err(MountError::LinkNotFound(link.clone()));
         }
 
-        println!("bucket share loaded");
-
         let bucket_share = _bucket_share.unwrap();
         let share = bucket_share.share();
         let secret = share.recover(secret_key)?;
-
-        println!("share recovered");
 
         let link = bucket_share.root().clone();
         if link == Link::default() {

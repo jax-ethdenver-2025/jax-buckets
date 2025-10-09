@@ -36,7 +36,7 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
     let state = match ServiceState::from_config(service_config).await {
         Ok(state) => state,
         Err(e) => {
-            eprintln!("error creating server state: {}", e);
+            tracing::error!("error creating server state: {}", e);
             std::process::exit(3);
         }
     };

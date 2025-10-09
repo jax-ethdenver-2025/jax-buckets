@@ -3,10 +3,9 @@ use axum::response::{IntoResponse, Response};
 use base64::Engine;
 use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use uuid::Uuid;
 
-use common::prelude::{Link, Mount, MountError};
+use common::prelude::MountError;
 
 use crate::http_server::api::client::ApiRequest;
 use crate::ServiceState;
@@ -29,6 +28,7 @@ pub struct CatResponse {
     /// Base64-encoded file content
     pub content: String,
     pub size: usize,
+    pub mime_type: String,
 }
 
 #[axum::debug_handler]
@@ -36,43 +36,23 @@ pub async fn handler(
     State(state): State<ServiceState>,
     Json(req): Json<CatRequest>,
 ) -> Result<impl IntoResponse, CatError> {
-    use crate::database::models::Bucket as BucketModel;
-
-    // Get bucket from database
-    let bucket = BucketModel::get_by_id(&req.bucket_id, state.database())
-        .await
-        .map_err(|e| CatError::Database(e.to_string()))?
-        .ok_or_else(|| CatError::BucketNotFound(req.bucket_id))?;
-
-    // Load mount
-    let bucket_link: Link = bucket.link.into();
-    let secret_key = state.node().secret();
-    let blobs = state.node().blobs();
-
-    let mount = Mount::load(&bucket_link, secret_key, blobs).await?;
-
-    // Validate path
-    let path = PathBuf::from(&req.path);
-    if !path.is_absolute() {
-        return Err(CatError::InvalidPath("Path must be absolute".into()));
-    }
-
-    // Clone blobs for the blocking task
-    let blobs_clone = blobs.clone();
-    let path_clone = path.clone();
-
-    // Read file in blocking task to avoid Send issues
-    let data = tokio::task::spawn_blocking(move || {
-        tokio::runtime::Handle::current().block_on(async {
-            mount.cat(&path_clone, &blobs_clone).await
-        })
-    })
+    // Use mount_ops to get file content
+    let file_content = crate::mount_ops::get_file_content(
+        req.bucket_id,
+        req.path.clone(),
+        &state,
+    )
     .await
-    .map_err(|e| CatError::Mount(MountError::Default(anyhow::anyhow!(e))))??;
+    .map_err(|e| match e {
+        crate::mount_ops::MountOpsError::BucketNotFound(id) => CatError::BucketNotFound(id),
+        crate::mount_ops::MountOpsError::InvalidPath(msg) => CatError::InvalidPath(msg),
+        crate::mount_ops::MountOpsError::Mount(me) => CatError::Mount(me),
+        e => CatError::MountOps(e.to_string()),
+    })?;
 
     // Encode as base64 for JSON transport
-    let content = base64::engine::general_purpose::STANDARD.encode(&data);
-    let size = data.len();
+    let content = base64::engine::general_purpose::STANDARD.encode(&file_content.data);
+    let size = file_content.data.len();
 
     Ok((
         http::StatusCode::OK,
@@ -80,6 +60,7 @@ pub async fn handler(
             path: req.path,
             content,
             size,
+            mime_type: file_content.mime_type,
         }),
     )
         .into_response())
@@ -91,8 +72,8 @@ pub enum CatError {
     BucketNotFound(Uuid),
     #[error("Invalid path: {0}")]
     InvalidPath(String),
-    #[error("Database error: {0}")]
-    Database(String),
+    #[error("MountOps error: {0}")]
+    MountOps(String),
     #[error("Mount error: {0}")]
     Mount(#[from] MountError),
 }
@@ -110,7 +91,7 @@ impl IntoResponse for CatError {
                 format!("Invalid path: {}", msg),
             )
                 .into_response(),
-            CatError::Database(_) | CatError::Mount(_) => (
+            CatError::MountOps(_) | CatError::Mount(_) => (
                 http::StatusCode::INTERNAL_SERVER_ERROR,
                 "Unexpected error".to_string(),
             )

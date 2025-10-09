@@ -207,7 +207,6 @@ mod tests {
             }
             Err(BucketError::Database(e)) => {
                 // Sometimes constraint violation comes through as generic DB error
-                eprintln!("Got database error: {}", e);
                 assert!(e.to_string().contains("UNIQUE") || e.to_string().contains("constraint"));
             }
             Ok(_) => panic!("Expected error but got Ok"),

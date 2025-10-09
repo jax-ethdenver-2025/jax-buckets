@@ -4,7 +4,7 @@ use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use common::prelude::{Link, Mount, MountError};
+use common::prelude::{Link, MountError};
 
 use crate::http_server::api::client::ApiRequest;
 use crate::ServiceState;
@@ -31,20 +31,23 @@ pub async fn handler(
 ) -> Result<impl IntoResponse, MountHandlerError> {
     use crate::database::models::Bucket as BucketModel;
 
-    // Get bucket from database
+    // Get bucket info from database
     let bucket = BucketModel::get_by_id(&req.bucket_id, state.database())
         .await
         .map_err(|e| MountHandlerError::Database(e.to_string()))?
         .ok_or_else(|| MountHandlerError::BucketNotFound(req.bucket_id))?;
 
-    // Load mount to verify it works
+    // Load mount using mount_ops helper
+    let mount = crate::mount_ops::load_mount_for_bucket(req.bucket_id, &state)
+        .await
+        .map_err(|e| match e {
+            crate::mount_ops::MountOpsError::BucketNotFound(id) => MountHandlerError::BucketNotFound(id),
+            crate::mount_ops::MountOpsError::Mount(me) => MountHandlerError::Mount(me),
+            e => MountHandlerError::MountOps(e.to_string()),
+        })?;
+
+    // Get links from mount
     let bucket_link: Link = bucket.link.into();
-    let secret_key = state.node().secret();
-    let blobs = state.node().blobs();
-
-    let mount = Mount::load(&bucket_link, secret_key, blobs).await?;
-
-    // Get root link from mount
     let root_link = mount.inner().link().clone();
 
     Ok((
@@ -65,6 +68,8 @@ pub enum MountHandlerError {
     BucketNotFound(Uuid),
     #[error("Database error: {0}")]
     Database(String),
+    #[error("MountOps error: {0}")]
+    MountOps(String),
     #[error("Mount error: {0}")]
     Mount(#[from] MountError),
 }
@@ -77,7 +82,7 @@ impl IntoResponse for MountHandlerError {
                 format!("Bucket not found: {}", id),
             )
                 .into_response(),
-            MountHandlerError::Database(_) | MountHandlerError::Mount(_) => (
+            MountHandlerError::Database(_) | MountHandlerError::MountOps(_) | MountHandlerError::Mount(_) => (
                 http::StatusCode::INTERNAL_SERVER_ERROR,
                 "Unexpected error".to_string(),
             )
