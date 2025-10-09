@@ -52,6 +52,7 @@ impl AppState {
     }
 
     /// Check if jax directory exists
+    #[allow(dead_code)]
     pub fn exists() -> Result<bool, StateError> {
         let jax_dir = Self::jax_dir()?;
         Ok(jax_dir.exists())

@@ -1,6 +1,7 @@
 use clap::{Args, Subcommand};
 
 pub mod add;
+pub mod cat;
 pub mod create;
 pub mod list;
 pub mod ls;
@@ -8,14 +9,15 @@ pub mod mount;
 
 use crate::op::Op;
 use service::http_server::api::v0::bucket::{
-    AddRequest, CreateRequest, ListRequest, LsRequest, MountRequest,
+    CreateRequest, ListRequest, MountRequest,
 };
 
 crate::command_enum! {
     (Create, CreateRequest),
     (List, ListRequest),
-    (Add, AddRequest),
-    (Ls, LsRequest),
+    (Add, add::Add),
+    (Ls, ls::Ls),
+    (Cat, cat::Cat),
     (Mount, MountRequest),
 }
 

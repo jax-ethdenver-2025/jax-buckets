@@ -160,6 +160,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64",
  "chrono",
  "clap",
  "common",
@@ -172,6 +173,7 @@ dependencies = [
  "toml",
  "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]
@@ -4548,6 +4550,7 @@ dependencies = [
  "askama_axum",
  "axum 0.7.9",
  "axum-extra",
+ "base64",
  "chrono",
  "clap",
  "common",

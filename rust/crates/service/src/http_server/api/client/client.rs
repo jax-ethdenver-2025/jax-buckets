@@ -1,8 +1,10 @@
 use reqwest::{header::HeaderMap, header::HeaderValue, Client};
 use url::Url;
+use uuid::Uuid;
 
 use super::error::ApiError;
 use super::ApiRequest;
+use crate::http_server::api::v0::bucket::list::{ListRequest, ListResponse};
 
 #[derive(Debug, Clone)]
 pub struct ApiClient {
@@ -34,5 +36,28 @@ impl ApiClient {
                 response.text().await?,
             ))
         }
+    }
+
+    /// Resolve a bucket name to a UUID
+    /// Returns the first bucket with an exact name match
+    pub async fn resolve_bucket_name(&mut self, name: &str) -> Result<Uuid, ApiError> {
+        let request = ListRequest {
+            prefix: Some(name.to_string()),
+            limit: Some(100),
+        };
+
+        let response: ListResponse = self.call(request).await?;
+
+        response
+            .buckets
+            .into_iter()
+            .find(|b| b.name == name)
+            .map(|b| b.bucket_id)
+            .ok_or_else(|| {
+                ApiError::HttpStatus(
+                    reqwest::StatusCode::NOT_FOUND,
+                    format!("Bucket not found: {}", name),
+                )
+            })
     }
 }

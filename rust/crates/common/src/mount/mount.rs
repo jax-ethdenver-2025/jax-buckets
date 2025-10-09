@@ -81,6 +81,36 @@ impl Mount {
         inner.link.clone()
     }
 
+    /// Save the current mount state by updating the bucket in blobs
+    /// Returns the new bucket link that should be stored in the database
+    pub async fn save(
+        &self,
+        secret_key: &SecretKey,
+        blobs: &BlobsStore,
+    ) -> Result<Link, MountError> {
+        let mut inner = self.0.lock();
+
+        // Create a new secret for the updated root
+        let secret = Secret::generate();
+
+        // Put the current root node into blobs with the new secret
+        let new_root_link = Self::_put_node_in_blobs(&inner.root_node, &secret, blobs).await?;
+
+        // Update the bucket's share with the new root link
+        // (add_share creates the Share internally)
+        let mut updated_bucket = inner.bucket.clone();
+        updated_bucket.add_share(secret_key.public(), new_root_link.clone(), secret)?;
+
+        // Put the updated bucket into blobs
+        let new_bucket_link = Self::_put_bucket_in_blobs(&updated_bucket, blobs).await?;
+
+        // Update our internal state
+        inner.link = new_root_link;
+        inner.bucket = updated_bucket;
+
+        Ok(new_bucket_link)
+    }
+
     pub async fn init(
         id: Uuid,
         name: String,

@@ -4,6 +4,7 @@ use axum::Router;
 use crate::ServiceState;
 
 pub mod add;
+pub mod cat;
 pub mod create;
 pub mod list;
 pub mod ls;
@@ -11,6 +12,7 @@ pub mod mount;
 
 // Re-export for convenience
 pub use add::{AddRequest, AddResponse};
+pub use cat::{CatRequest, CatResponse};
 pub use create::{CreateRequest, CreateResponse};
 pub use list::{ListRequest, ListResponse};
 pub use ls::{LsRequest, LsResponse};
@@ -22,6 +24,7 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         .route("/list", post(list::handler))
         .route("/add", post(add::handler))
         .route("/ls", post(ls::handler))
+        .route("/cat", post(cat::handler))
         .route("/mount", post(mount::handler))
         .with_state(state)
 }
