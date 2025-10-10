@@ -7,7 +7,7 @@ use common::prelude::*;
 
 #[derive(Clone)]
 pub struct State {
-    node: Node,
+    node: Peer,
     database: Database,
 }
 
@@ -30,7 +30,7 @@ impl State {
         let database = Database::connect(&sqlite_database_url).await?;
 
         // build our node
-        let mut node_builder = Node::builder();
+        let mut node_builder = Peer::builder();
         // set the socket addr if specified
         if config.node_listen_addr.is_some() {
             node_builder = node_builder.socket_addr(config.node_listen_addr.unwrap());
@@ -51,7 +51,7 @@ impl State {
         Ok(Self { node, database })
     }
 
-    pub fn node(&self) -> &Node {
+    pub fn node(&self) -> &Peer {
         &self.node
     }
 
@@ -60,8 +60,8 @@ impl State {
     }
 }
 
-impl AsRef<Node> for State {
-    fn as_ref(&self) -> &Node {
+impl AsRef<Peer> for State {
+    fn as_ref(&self) -> &Peer {
         &self.node
     }
 }

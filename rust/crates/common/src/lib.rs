@@ -40,6 +40,6 @@ pub mod prelude {
     pub use crate::mount::{Bucket, BucketError};
     // Backward compatibility aliases
     pub use crate::mount::{Mount, MountError};
-    pub use crate::peer::Node;
+    pub use crate::peer::Peer;
     pub use crate::version::build_info;
 }

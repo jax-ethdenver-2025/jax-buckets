@@ -12,7 +12,7 @@ mod blobs_store;
 pub use blobs_store::{BlobsStore, BlobsStoreError};
 
 #[derive(Debug, Clone, Default)]
-pub struct NodeBuilder {
+pub struct PeerBuilder {
     /// the socket addr to expose the peer on
     ///  if not set, an ephemeral port will be used
     socket_addr: Option<SocketAddr>,
@@ -27,9 +27,9 @@ pub struct NodeBuilder {
 }
 
 // TODO (amiller68): proper errors
-impl NodeBuilder {
+impl PeerBuilder {
     pub fn new() -> Self {
-        NodeBuilder {
+        PeerBuilder {
             socket_addr: None,
             secret_key: None,
             blobs_store_path: None,
@@ -51,7 +51,7 @@ impl NodeBuilder {
         self
     }
 
-    pub async fn build(self) -> Node {
+    pub async fn build(self) -> Peer {
         // set the socket port to unspecified if not set
         let socket_addr = self
             .socket_addr
@@ -97,7 +97,7 @@ impl NodeBuilder {
             .await
             .expect("failed to load blob store");
 
-        Node {
+        Peer {
             blob_store,
             secret: secret_key,
             endpoint,
@@ -109,16 +109,16 @@ impl NodeBuilder {
 // TODO (amiller68): this can prolly be simpler /
 //  idk if we need all of this, but it'll work for now
 #[derive(Debug, Clone)]
-pub struct Node {
+pub struct Peer {
     blob_store: BlobsStore,
     secret: SecretKey,
     endpoint: Endpoint,
     blobs_store_path: PathBuf,
 }
 
-impl Node {
-    pub fn builder() -> NodeBuilder {
-        NodeBuilder::default()
+impl Peer {
+    pub fn builder() -> PeerBuilder {
+        PeerBuilder::default()
     }
 
     pub fn id(&self) -> NodeId {
