@@ -11,6 +11,8 @@ use crate::crypto::{Secret, SecretError, SecretKey, Share};
 use crate::linked_data::{BlockEncoded, CodecError, Link};
 use crate::peer::{BlobsStore, BlobsStoreError};
 
+use super::pins::Pins;
+
 pub fn clean_path(path: &Path) -> PathBuf {
     if !path.is_absolute() {
         panic!("path is not absolute");
@@ -26,6 +28,7 @@ pub struct MountInner {
     pub link: Link,
     pub bucket_data: BucketData,
     pub root_node: Node,
+    pub pins: Pins,
 }
 
 impl MountInner {
@@ -34,6 +37,9 @@ impl MountInner {
     }
     pub fn bucket_data(&self) -> &BucketData {
         &self.bucket_data
+    }
+    pub fn pins(&self) -> &Pins {
+        &self.pins
     }
 }
 
@@ -88,13 +94,25 @@ impl Bucket {
         // Put the current root node into blobs with the new secret
         let new_root_link = Self::_put_node_in_blobs(&inner.root_node, &secret, blobs).await?;
 
+        // Serialize current pins to blobs
+        let pins_link = Self::_put_pins_in_blobs(&inner.pins, blobs).await?;
+
         // Update the bucket's share with the new root link
         // (add_share creates the Share internally)
         let mut updated_bucket = inner.bucket_data.clone();
         updated_bucket.add_share(secret_key.public(), new_root_link.clone(), secret)?;
 
+        // Update the bucket's pins field
+        updated_bucket.set_pins(pins_link.clone());
+
         // Put the updated bucket into blobs
         let new_bucket_link = Self::_put_bucket_in_blobs(&updated_bucket, blobs).await?;
+
+        // Track the new hashes created during save in the in-memory pins
+        // These will be included in the next save operation
+        inner.pins.insert(*new_root_link.hash());
+        inner.pins.insert(*pins_link.hash());
+        inner.pins.insert(*new_bucket_link.hash());
 
         // Update our internal state
         inner.link = new_root_link;
@@ -118,14 +136,21 @@ impl Bucket {
         // share the secret with the owner
         let share = Share::new(&secret, &owner.public())?;
         // construct the new bucket
-        let bucket_data = BucketData::init(id, name, owner.public(), share, root);
+        let bucket_data = BucketData::init(id, name, owner.public(), share, root.clone());
         // put the bucket in the blobs store for the secret
         let link = Self::_put_bucket_in_blobs(&bucket_data, blobs).await?;
+
+        // Initialize pins with root node hash and bucket hash
+        let mut pins = Pins::new();
+        pins.insert(*root.hash());
+        pins.insert(*link.hash());
+
         // return the new mount
         Ok(Bucket(Arc::new(Mutex::new(MountInner {
             link,
             bucket_data,
             root_node: node,
+            pins,
         }))))
     }
 
@@ -155,10 +180,27 @@ impl Bucket {
         } else {
             let root_node =
                 Self::_get_node_from_blobs(&NodeLink::Dir(link.clone(), secret), blobs).await?;
+
+            // Load or initialize pins
+            let pins = if let Some(pins_link) = bucket.pins() {
+                // Load existing pins from blobs
+                match Self::_get_pins_from_blobs(pins_link, blobs).await {
+                    Ok(pins) => pins,
+                    Err(_) => {
+                        // If pins blob is missing, start with empty set
+                        Pins::new()
+                    }
+                }
+            } else {
+                // Legacy bucket without pins, start with empty set
+                Pins::new()
+            };
+
             Ok(Bucket(Arc::new(Mutex::new(MountInner {
                 link,
                 bucket_data: bucket,
                 root_node,
+                pins,
             }))))
         }
     }
@@ -199,11 +241,16 @@ impl Bucket {
             iroh_blobs::BlobFormat::Raw,
         );
 
-        let node_link = NodeLink::new_data_from_path(link, secret, path);
+        let node_link = NodeLink::new_data_from_path(link.clone(), secret, path);
 
         let mut inner = self.0.lock();
         let root_node = inner.root_node.clone();
-        let updated_link = Self::_set_node_link_at_path(root_node, node_link, path, blobs).await?;
+        let (updated_link, node_hashes) =
+            Self::_set_node_link_at_path(root_node, node_link, path, blobs).await?;
+
+        // Track pins: data blob + all created node hashes
+        inner.pins.insert(hash);
+        inner.pins.extend(node_hashes);
 
         if let NodeLink::Dir(new_root_link, new_secret) = updated_link {
             inner.root_node = Self::_get_node_from_blobs(
@@ -245,24 +292,30 @@ impl Bucket {
             let link = Self::_put_node_in_blobs(&parent_node, &secret, blobs).await?;
 
             let mut inner = self.0.lock();
+            // Track the new root node hash
+            inner.pins.insert(*link.hash());
             inner.root_node = parent_node;
             inner.link = link;
         } else {
             // Save the modified parent node to blobs
             let secret = Secret::generate();
             let parent_link = Self::_put_node_in_blobs(&parent_node, &secret, blobs).await?;
-            let node_link = NodeLink::new_dir(parent_link, secret);
+            let node_link = NodeLink::new_dir(parent_link.clone(), secret);
 
             let mut inner = self.0.lock();
             // Convert parent_path back to absolute for _set_node_link_at_path
             let abs_parent_path = Path::new("/").join(parent_path);
-            let updated_link = Self::_set_node_link_at_path(
+            let (updated_link, node_hashes) = Self::_set_node_link_at_path(
                 inner.root_node.clone(),
                 node_link,
                 &abs_parent_path,
                 blobs,
             )
             .await?;
+
+            // Track the parent node hash and all created node hashes
+            inner.pins.insert(*parent_link.hash());
+            inner.pins.extend(node_hashes);
 
             if let NodeLink::Dir(new_root_link, new_secret) = updated_link {
                 inner.root_node = Self::_get_node_from_blobs(
@@ -449,7 +502,7 @@ impl Bucket {
         node_link: NodeLink,
         path: &Path,
         blobs: &BlobsStore,
-    ) -> Result<NodeLink, BucketError> {
+    ) -> Result<(NodeLink, Vec<crate::linked_data::Hash>), BucketError> {
         let path = clean_path(path);
         let mut visited_nodes = Vec::new();
         let mut name = path.file_name().unwrap().to_string_lossy().to_string();
@@ -482,10 +535,12 @@ impl Bucket {
         }
 
         let mut node_link = node_link;
+        let mut created_hashes = Vec::new();
         for (path, mut node) in visited_nodes.into_iter().rev() {
             node.insert(name, node_link.clone());
             let secret = Secret::generate();
             let link = Self::_put_node_in_blobs(&node, &secret, blobs).await?;
+            created_hashes.push(*link.hash());
             node_link = NodeLink::Dir(link, secret);
             name = path
                 .file_name()
@@ -494,15 +549,27 @@ impl Bucket {
                 .to_string();
         }
 
-        Ok(node_link)
+        Ok((node_link, created_hashes))
     }
 
-    async fn _get_bucket_from_blobs(link: &Link, blobs: &BlobsStore) -> Result<BucketData, BucketError> {
+    async fn _get_bucket_from_blobs(
+        link: &Link,
+        blobs: &BlobsStore,
+    ) -> Result<BucketData, BucketError> {
         if !(blobs.stat(link.hash()).await?) {
             return Err(BucketError::LinkNotFound(link.clone()));
         };
         let data = blobs.get(link.hash()).await?;
         Ok(BucketData::decode(&data)?)
+    }
+
+    async fn _get_pins_from_blobs(link: &Link, blobs: &BlobsStore) -> Result<Pins, BucketError> {
+        if !(blobs.stat(link.hash()).await?) {
+            return Err(BucketError::LinkNotFound(link.clone()));
+        };
+        // Read hashes from the hash list blob
+        let hashes = blobs.read_hash_list(*link.hash()).await?;
+        Ok(Pins::from_vec(hashes))
     }
 
     async fn _get_node_from_blobs(
@@ -550,6 +617,18 @@ impl Bucket {
         // NOTE (amiller68): buckets are unencrypted, so they can inherit
         //  the codec of the bucket itself (which is currently always cbor)
         let link = Link::new(bucket_data.codec(), hash, iroh_blobs::BlobFormat::Raw);
+        Ok(link)
+    }
+
+    async fn _put_pins_in_blobs(pins: &Pins, blobs: &BlobsStore) -> Result<Link, BucketError> {
+        // Create a hash list blob from the pins (raw bytes: 32 bytes per hash, concatenated)
+        let hash = blobs.create_hash_list(pins.iter().copied()).await?;
+        // Pins are stored as raw blobs containing concatenated hashes
+        let link = Link::new(
+            crate::linked_data::LD_RAW_CODEC,
+            hash,
+            iroh_blobs::BlobFormat::HashSeq,
+        );
         Ok(link)
     }
 }

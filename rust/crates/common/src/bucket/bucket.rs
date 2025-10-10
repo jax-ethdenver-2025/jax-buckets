@@ -154,6 +154,14 @@ impl BucketData {
     pub fn version(&self) -> &Version {
         &self.version
     }
+
+    pub fn pins(&self) -> &Option<Link> {
+        &self.pins
+    }
+
+    pub fn set_pins(&mut self, pins_link: Link) {
+        self.pins = Some(pins_link);
+    }
 }
 
 #[cfg(test)]

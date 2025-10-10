@@ -21,11 +21,19 @@
         <h1 class="text-3xl font-bold">
             <i class="fas fa-folder-open mr-2"></i>{{ bucket_name }}
         </h1>
-        {% if current_path != "/" %}
-        <a href="{{ parent_path_url }}" class="button">
-            <i class="fas fa-arrow-up"></i> Up
-        </a>
-        {% endif %}
+        <div class="flex gap-2">
+            <a href="/buckets/{{ bucket_id }}/pins" class="button">
+                <i class="fas fa-thumbtack"></i> Pins
+            </a>
+            <a href="/buckets/{{ bucket_id }}/peers" class="button">
+                <i class="fas fa-users"></i> Peers
+            </a>
+            {% if current_path != "/" %}
+            <a href="{{ parent_path_url }}" class="button">
+                <i class="fas fa-arrow-up"></i> Up
+            </a>
+            {% endif %}
+        </div>
     </div>
 
     <!-- Upload form (only show if not read-only) -->

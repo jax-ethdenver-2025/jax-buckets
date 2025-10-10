@@ -10,6 +10,10 @@
             <li><a href="/buckets" class="text-primary hover:underline">Buckets</a></li>
             <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
             <li><a href="/buckets/{{ bucket_id }}" class="text-primary hover:underline">{{ bucket_name }}</a></li>
+            {% for segment in path_segments %}
+            <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
+            <li><a href="/buckets/{{ bucket_id }}?path={{ segment.path }}" class="text-primary hover:underline">{{ segment.name }}</a></li>
+            {% endfor %}
             <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
             <li class="text-muted-foreground">{{ file_name }}</li>
         </ol>

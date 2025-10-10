@@ -8,6 +8,8 @@ mod bucket_explorer;
 mod buckets;
 mod file_viewer;
 mod index;
+mod peers_explorer;
+mod pins_explorer;
 
 use crate::ServiceState;
 
@@ -23,6 +25,8 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         .route("/buckets", get(buckets::handler))
         .route("/buckets/:bucket_id", get(bucket_explorer::handler))
         .route("/buckets/:bucket_id/view", get(file_viewer::handler))
+        .route("/buckets/:bucket_id/pins", get(pins_explorer::handler))
+        .route("/buckets/:bucket_id/peers", get(peers_explorer::handler))
         .with_state(state)
         .layer(cors_layer)
 }

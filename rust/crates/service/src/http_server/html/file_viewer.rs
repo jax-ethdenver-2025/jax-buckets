@@ -8,6 +8,12 @@ use uuid::Uuid;
 use crate::mount_ops;
 use crate::ServiceState;
 
+#[derive(Debug, Clone)]
+pub struct PathSegment {
+    pub name: String,
+    pub path: String,
+}
+
 #[derive(Template)]
 #[template(path = "file_viewer.html")]
 pub struct FileViewerTemplate {
@@ -15,6 +21,7 @@ pub struct FileViewerTemplate {
     pub bucket_name: String,
     pub file_path: String,
     pub file_name: String,
+    pub path_segments: Vec<PathSegment>,
     pub file_size: usize,
     pub mime_type: String,
     pub is_text: bool,
@@ -98,6 +105,9 @@ pub async fn handler(
         }
     };
 
+    // Build path segments for breadcrumb (excluding the file name)
+    let path_segments = build_path_segments(&file_path);
+
     // Build back URL (parent directory)
     let back_url = build_back_url(&file_path, &bucket_id);
 
@@ -106,6 +116,7 @@ pub async fn handler(
         bucket_name: bucket.name,
         file_path,
         file_name,
+        path_segments,
         file_size: file_content.data.len(),
         mime_type: file_content.mime_type,
         is_text,
@@ -114,6 +125,33 @@ pub async fn handler(
     };
 
     template.into_response()
+}
+
+fn build_path_segments(file_path: &str) -> Vec<PathSegment> {
+    // Get the directory path (everything except the file name)
+    let parent = std::path::Path::new(file_path)
+        .parent()
+        .and_then(|p| p.to_str())
+        .unwrap_or("/");
+
+    if parent == "/" {
+        return vec![];
+    }
+
+    let parts: Vec<&str> = parent.trim_matches('/').split('/').collect();
+    let mut segments = Vec::new();
+    let mut accumulated = String::new();
+
+    for part in parts {
+        accumulated.push('/');
+        accumulated.push_str(part);
+        segments.push(PathSegment {
+            name: part.to_string(),
+            path: accumulated.clone(),
+        });
+    }
+
+    segments
 }
 
 fn build_back_url(file_path: &str, bucket_id: &Uuid) -> String {

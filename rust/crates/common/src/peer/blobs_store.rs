@@ -107,6 +107,46 @@ impl BlobsStore {
             .await?;
         Ok(())
     }
+
+    /// Create a simple blob containing a sequence of hashes
+    /// Each hash is 32 bytes, stored consecutively
+    /// Returns the hash of the blob containing all the hashes
+    pub async fn create_hash_list<I>(&self, hashes: I) -> Result<Hash, BlobsStoreError>
+    where
+        I: IntoIterator<Item = Hash>,
+    {
+        // Serialize hashes as raw bytes (32 bytes each, concatenated)
+        let mut data = Vec::new();
+        for hash in hashes {
+            data.extend_from_slice(hash.as_bytes());
+        }
+
+        // Store as a single blob
+        let hash = self.put(data).await?;
+        Ok(hash)
+    }
+
+    /// Read all hashes from a hash list blob
+    /// Returns a Vec of all hashes in the list
+    pub async fn read_hash_list(&self, list_hash: Hash) -> Result<Vec<Hash>, BlobsStoreError> {
+        let mut hashes = Vec::new();
+
+        // Read the blob
+        let data = self.get(&list_hash).await?;
+
+        // Parse hashes (32 bytes each)
+        if data.len() % 32 != 0 {
+            return Err(anyhow!("Invalid hash list: length is not a multiple of 32").into());
+        }
+
+        for chunk in data.chunks_exact(32) {
+            let mut hash_bytes = [0u8; 32];
+            hash_bytes.copy_from_slice(chunk);
+            hashes.push(Hash::from_bytes(hash_bytes));
+        }
+
+        Ok(hashes)
+    }
 }
 
 #[cfg(test)]
