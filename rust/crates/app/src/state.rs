@@ -1,7 +1,4 @@
-use std::{
-    fs,
-    path::PathBuf,
-};
+use std::{fs, path::PathBuf};
 
 use common::prelude::SecretKey;
 use serde::{Deserialize, Serialize};
@@ -49,8 +46,7 @@ impl AppState {
     /// Get the jax directory path (~/.jax)
     pub fn jax_dir() -> Result<PathBuf, StateError> {
         // Use home directory directly since we want ~/.jax
-        let home = dirs::home_dir()
-            .ok_or_else(|| StateError::NoHomeDirectory)?;
+        let home = dirs::home_dir().ok_or_else(|| StateError::NoHomeDirectory)?;
         Ok(home.join(format!(".{}", APP_NAME)))
     }
 
@@ -146,8 +142,7 @@ impl AppState {
     /// Load the secret key from the key file
     pub fn load_key(&self) -> Result<SecretKey, StateError> {
         let pem = fs::read_to_string(&self.key_path)?;
-        let key = SecretKey::from_pem(&pem)
-            .map_err(|e| StateError::InvalidKey(e.to_string()))?;
+        let key = SecretKey::from_pem(&pem).map_err(|e| StateError::InvalidKey(e.to_string()))?;
         Ok(key)
     }
 }

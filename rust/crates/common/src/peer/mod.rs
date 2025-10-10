@@ -86,14 +86,14 @@ impl PeerBuilder {
         // Create the endpoint with our key and discovery
         let endpoint = Endpoint::builder()
             .secret_key(secret_key.0.clone())
-            .discovery(Box::new(mainline_discovery))
+            .discovery(mainline_discovery)
             .bind_addr_v4(addr)
             .bind()
             .await
             .expect("failed to bind ephemeral endpoint");
 
         // Create the blob store
-        let blob_store = BlobsStore::load(&blobs_store_path, endpoint.clone())
+        let blob_store = BlobsStore::load(&blobs_store_path)
             .await
             .expect("failed to load blob store");
 

@@ -1,3 +1,4 @@
+use std::future::IntoFuture;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
@@ -5,10 +6,14 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use bytes::Bytes;
 use futures::Stream;
-use iroh::Endpoint;
-use iroh_blobs::rpc::client::blobs::{BlobStatus, Reader};
-use iroh_blobs::util::SetTagOption;
-use iroh_blobs::{net_protocol::Blobs, store::fs::Store, ticket::BlobTicket, Hash};
+use iroh_blobs::{
+    api::{
+        blobs::{BlobReader as Reader, BlobStatus, Blobs},
+        ExportBaoError, RequestError,
+    },
+    store::fs::FsStore,
+    BlobsProtocol, Hash,
+};
 
 // TODO (amiller68): maybe at some point it would make sense
 //  to implement some sort of `BlockStore` trait over BlobStore
@@ -19,11 +24,11 @@ use iroh_blobs::{net_protocol::Blobs, store::fs::Store, ticket::BlobTicket, Hash
 ///  for bucket, node, and data storage and retrieval
 #[derive(Clone, Debug)]
 pub struct BlobsStore {
-    pub inner: Arc<Blobs<Store>>,
+    pub inner: Arc<BlobsProtocol>,
 }
 
 impl Deref for BlobsStore {
-    type Target = Arc<Blobs<Store>>;
+    type Target = Arc<BlobsProtocol>;
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
@@ -35,6 +40,10 @@ pub enum BlobsStoreError {
     Default(#[from] anyhow::Error),
     #[error("blob store i/o error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("export bao error: {0}")]
+    ExportBao(#[from] ExportBaoError),
+    #[error("request error: {0}")]
+    Request(#[from] RequestError),
 }
 
 impl BlobsStore {
@@ -48,65 +57,81 @@ impl BlobsStore {
     ///     Exposes a peer for the private key used to initiate
     ///     the endpoint.
     #[allow(clippy::doc_overindented_list_items)]
-    pub async fn load(path: &Path, endpoint: Endpoint) -> Result<Self, BlobsStoreError> {
-        let store = Store::load(path).await?;
-        let blobs = Blobs::builder(store).build(&endpoint);
+    pub async fn load(path: &Path) -> Result<Self, BlobsStoreError> {
+        let store = FsStore::load(path).await?;
+        // let blobs = Blobs::builder(store).build(&endpoint);
+        let blobs = BlobsProtocol::new(&store, None);
         Ok(Self {
             inner: Arc::new(blobs),
         })
     }
 
+    /// Get a handle to the underlying blobs client against
+    ///  the store
+    pub fn blobs(&self) -> &Blobs {
+        &self.inner.store().blobs()
+    }
+
     /// Get a blob as bytes
     pub async fn get(&self, hash: &Hash) -> Result<Bytes, BlobsStoreError> {
-        let bytes = self.client().read_to_bytes(*hash).await?;
+        let bytes = self.blobs().get_bytes(*hash).await?;
         Ok(bytes)
     }
 
     /// Get a blob from the store as a reader
     pub async fn get_reader(&self, hash: Hash) -> Result<Reader, BlobsStoreError> {
-        let reader = self.client().read(hash).await?;
+        let reader = self.blobs().reader(hash);
         Ok(reader)
     }
 
     /// Store a stream of bytes as a blob
     pub async fn put_stream(
         &self,
-        stream: impl Stream<Item = std::io::Result<Bytes>> + Send + Unpin + 'static,
+        stream: impl Stream<Item = std::io::Result<Bytes>> + Send + Unpin + 'static + std::marker::Sync,
     ) -> Result<Hash, BlobsStoreError> {
         let outcome = self
-            .client()
-            .add_stream(stream, SetTagOption::Auto)
+            .blobs()
+            .add_stream(stream)
+            .into_future()
             .await
-            .map_err(|e| anyhow!(e))?
-            .finish()
-            .await
-            .map_err(|e| anyhow!(e))?;
-        Ok(outcome.hash)
+            .with_tag()
+            .await?
+            .hash;
+        Ok(outcome)
     }
 
     /// Store a vec of bytes as a blob
     pub async fn put(&self, data: Vec<u8>) -> Result<Hash, BlobsStoreError> {
-        let hash = self.client().add_bytes(data).await?.hash;
+        let hash = self.blobs().add_bytes(data).into_future().await?.hash;
         Ok(hash)
     }
 
     /// Get the stat of a blob
     pub async fn stat(&self, hash: &Hash) -> Result<bool, BlobsStoreError> {
-        let stat = self.client().status(*hash).await?;
+        let stat = self
+            .blobs()
+            .status(*hash)
+            .await
+            .map_err(|err| BlobsStoreError::Default(anyhow!(err)))?;
         Ok(matches!(stat, BlobStatus::Complete { .. }))
     }
 
-    /// Pull a blob from the network using its ticket
-    ///  Specify a ticker by concatenating the node address
-    ///  of a peer that has the blob, with the blob hash and format
-    pub async fn pull(&self, ticket: &BlobTicket) -> Result<(), BlobsStoreError> {
-        self.client()
-            .download(ticket.hash(), ticket.node_addr().clone())
-            .await?
-            .finish()
-            .await?;
-        Ok(())
-    }
+    // /// Pull a blob from the network using its ticket
+    // ///  Specify a ticker by concatenating the node address
+    // ///  of a peer that has the blob, with the blob hash and format
+    // pub async fn pull(
+    //     &self,
+    //     ticket: &BlobTicket,
+    //     endpoint: &Endpoint,
+    // ) -> Result<(), BlobsStoreError> {
+    //     self.inner
+    //         .downloader(endpoint)
+    //         .download(ticket.hash(), ticket.node_addr().clone())
+    //         .await?
+    //         .finish()
+    //         .await?;
+    //     Ok(())
+    // }
 
     /// Create a simple blob containing a sequence of hashes
     /// Each hash is 32 bytes, stored consecutively
@@ -160,15 +185,10 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let blob_path = temp_dir.path().join("blobs");
 
-        let secret_key = iroh::SecretKey::generate(rand_core::OsRng);
-        let endpoint = iroh::Endpoint::builder()
-            .secret_key(secret_key)
-            .bind()
-            .await
-            .unwrap();
-
-        let store = BlobsStore::load(&blob_path, endpoint).await.unwrap();
-        (store, temp_dir)
+        // let store = FsStore::load(&blob_path).await.unwrap();
+        // let blobs = BlobsProtocol::new(&store, None);
+        let blobs = BlobsStore::load(&blob_path).await.unwrap();
+        (blobs, temp_dir)
     }
 
     #[tokio::test]

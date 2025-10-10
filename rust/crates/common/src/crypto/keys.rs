@@ -2,7 +2,6 @@ use std::ops::Deref;
 
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use iroh::{PublicKey as PPublicKey, SecretKey as SSecretKey};
-use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
 
@@ -135,9 +134,9 @@ impl SecretKey {
     //  kinda useless since we get them for free through the deref
     //  ... but fine for now
     pub fn generate() -> Self {
-        let mut rng = OsRng;
-        let signing_key = SSecretKey::generate(&mut rng);
-        Self(signing_key)
+        let mut bytes = [0u8; PRIVATE_KEY_SIZE];
+        getrandom::getrandom(&mut bytes).expect("failed to generate random bytes");
+        Self::from(bytes)
     }
 
     pub fn public(&self) -> PublicKey {
@@ -158,8 +157,7 @@ impl SecretKey {
     }
 
     pub fn from_pem(pem_str: &str) -> Result<Self, KeyError> {
-        let pem = pem::parse(pem_str)
-            .map_err(|e| anyhow::anyhow!("failed to parse PEM: {}", e))?;
+        let pem = pem::parse(pem_str).map_err(|e| anyhow::anyhow!("failed to parse PEM: {}", e))?;
 
         if pem.tag() != "PRIVATE KEY" {
             return Err(anyhow::anyhow!("invalid PEM tag, expected PRIVATE KEY").into());
@@ -219,6 +217,9 @@ mod test {
         assert_eq!(private_key.to_bytes(), recovered_private.to_bytes());
 
         // Verify the recovered key can produce the same public key
-        assert_eq!(private_key.public().to_bytes(), recovered_private.public().to_bytes());
+        assert_eq!(
+            private_key.public().to_bytes(),
+            recovered_private.public().to_bytes()
+        );
     }
 }

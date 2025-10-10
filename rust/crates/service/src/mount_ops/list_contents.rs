@@ -33,7 +33,9 @@ pub async fn list_bucket_contents(
         })
     })
     .await
-    .map_err(|e| MountOpsError::Mount(common::prelude::MountError::Default(anyhow::anyhow!(e))))??;
+    .map_err(|e| {
+        MountOpsError::Mount(common::prelude::MountError::Default(anyhow::anyhow!(e)))
+    })??;
 
     // Convert to FileInfo - paths from mount are relative, make them absolute
     Ok(items

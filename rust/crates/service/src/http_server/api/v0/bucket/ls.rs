@@ -49,18 +49,13 @@ pub async fn handler(
     let deep = req.deep.unwrap_or(false);
 
     // Use mount_ops to list bucket contents
-    let items = crate::mount_ops::list_bucket_contents(
-        req.bucket_id,
-        req.path,
-        deep,
-        &state,
-    )
-    .await
-    .map_err(|e| match e {
-        crate::mount_ops::MountOpsError::BucketNotFound(id) => LsError::BucketNotFound(id),
-        crate::mount_ops::MountOpsError::Mount(me) => LsError::Mount(me),
-        e => LsError::MountOps(e.to_string()),
-    })?;
+    let items = crate::mount_ops::list_bucket_contents(req.bucket_id, req.path, deep, &state)
+        .await
+        .map_err(|e| match e {
+            crate::mount_ops::MountOpsError::BucketNotFound(id) => LsError::BucketNotFound(id),
+            crate::mount_ops::MountOpsError::Mount(me) => LsError::Mount(me),
+            e => LsError::MountOps(e.to_string()),
+        })?;
 
     // Convert to response format
     let path_infos = items

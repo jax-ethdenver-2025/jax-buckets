@@ -8,9 +8,7 @@ pub mod ls;
 pub mod mount;
 
 use crate::op::Op;
-use service::http_server::api::v0::bucket::{
-    CreateRequest, ListRequest, MountRequest,
-};
+use service::http_server::api::v0::bucket::{CreateRequest, ListRequest, MountRequest};
 
 crate::command_enum! {
     (Create, CreateRequest),

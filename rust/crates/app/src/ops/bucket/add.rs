@@ -73,7 +73,8 @@ impl crate::op::Op for Add {
 
         // Send multipart request
         let url = client.base_url().join("/api/v0/bucket/add").unwrap();
-        let response = client.http_client()
+        let response = client
+            .http_client()
             .post(url)
             .multipart(form)
             .send()

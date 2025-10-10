@@ -80,8 +80,10 @@ pub async fn handler(
         }
     }
 
-    let bucket_id = bucket_id.ok_or_else(|| AddError::InvalidRequest("bucket_id is required".into()))?;
-    let mount_path = mount_path.ok_or_else(|| AddError::InvalidRequest("mount_path is required".into()))?;
+    let bucket_id =
+        bucket_id.ok_or_else(|| AddError::InvalidRequest("bucket_id is required".into()))?;
+    let mount_path =
+        mount_path.ok_or_else(|| AddError::InvalidRequest("mount_path is required".into()))?;
     let file_data = file_data.ok_or_else(|| AddError::InvalidRequest("file is required".into()))?;
 
     // Validate mount path
@@ -95,7 +97,12 @@ pub async fn handler(
         .first_or_octet_stream()
         .to_string();
 
-    tracing::info!("Adding file to bucket {} at {} ({})", bucket_id, mount_path, mime_type);
+    tracing::info!(
+        "Adding file to bucket {} at {} ({})",
+        bucket_id,
+        mount_path,
+        mime_type
+    );
 
     // Get bucket from database
     let bucket = BucketModel::get_by_id(&bucket_id, state.database())
@@ -118,26 +125,27 @@ pub async fn handler(
     let secret_key_clone = secret_key.clone();
 
     // Run file operations in blocking task
-    let (new_bucket_link, root_node_link) = tokio::task::spawn_blocking(move || -> Result<(Link, Link), MountError> {
-        // Create a cursor from the file data
-        let cursor = Cursor::new(file_data);
+    let (new_bucket_link, root_node_link) =
+        tokio::task::spawn_blocking(move || -> Result<(Link, Link), MountError> {
+            // Create a cursor from the file data
+            let cursor = Cursor::new(file_data);
 
-        tokio::runtime::Handle::current().block_on(async {
-            tracing::info!("Adding file to mount");
-            mount.add(&mount_path_clone, cursor, &blobs_clone).await?;
-            tracing::info!("File added to mount");
+            tokio::runtime::Handle::current().block_on(async {
+                tracing::info!("Adding file to mount");
+                mount.add(&mount_path_clone, cursor, &blobs_clone).await?;
+                tracing::info!("File added to mount");
 
-            // Save the mount (updates bucket in blobs)
-            tracing::info!("Saving mount");
-            let bucket_link = mount.save(&secret_key_clone, &blobs_clone).await?;
-            tracing::info!("Mount saved with new bucket link");
+                // Save the mount (updates bucket in blobs)
+                tracing::info!("Saving mount");
+                let bucket_link = mount.save(&secret_key_clone, &blobs_clone).await?;
+                tracing::info!("Mount saved with new bucket link");
 
-            let root_link = mount.link();
-            Ok((bucket_link, root_link))
+                let root_link = mount.link();
+                Ok((bucket_link, root_link))
+            })
         })
-    })
-    .await
-    .map_err(|e| AddError::Mount(MountError::Default(anyhow::anyhow!(e))))??;
+        .await
+        .map_err(|e| AddError::Mount(MountError::Default(anyhow::anyhow!(e))))??;
 
     // Update bucket link in database
     bucket
@@ -181,7 +189,9 @@ impl IntoResponse for AddError {
                 format!("Bucket not found: {}", id),
             )
                 .into_response(),
-            AddError::InvalidPath(msg) | AddError::InvalidRequest(msg) | AddError::MultipartError(msg) => (
+            AddError::InvalidPath(msg)
+            | AddError::InvalidRequest(msg)
+            | AddError::MultipartError(msg) => (
                 http::StatusCode::BAD_REQUEST,
                 format!("Bad request: {}", msg),
             )

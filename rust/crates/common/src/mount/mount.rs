@@ -644,13 +644,10 @@ mod test {
         let blob_path = temp_dir.path().join("blobs");
 
         let secret_key = crate::crypto::SecretKey::generate();
-        let iroh_secret_key = iroh::SecretKey::generate(rand_core::OsRng);
-        let endpoint = iroh::Endpoint::builder()
-            .secret_key(iroh_secret_key)
-            .bind()
-            .await
-            .unwrap();
-        let blobs = BlobsStore::load(&blob_path, endpoint).await.unwrap();
+        // Generate iroh secret key from random bytes
+        let mut iroh_key_bytes = [0u8; 32];
+        getrandom::getrandom(&mut iroh_key_bytes).expect("failed to generate random bytes");
+        let blobs = BlobsStore::load(&blob_path).await.unwrap();
         let bucket = BucketData::new("test-bucket".to_string(), secret_key.public());
 
         let root_node = Node::default();

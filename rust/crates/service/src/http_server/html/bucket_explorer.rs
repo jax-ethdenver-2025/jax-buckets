@@ -76,13 +76,16 @@ pub async fn handler(
     };
 
     // List bucket contents
-    let items = match mount_ops::list_bucket_contents(bucket_id, Some(current_path.clone()), false, &state).await {
-        Ok(items) => items,
-        Err(e) => {
-            tracing::error!("Failed to list bucket contents: {}", e);
-            return error_response("Failed to load bucket contents");
-        }
-    };
+    let items =
+        match mount_ops::list_bucket_contents(bucket_id, Some(current_path.clone()), false, &state)
+            .await
+        {
+            Ok(items) => items,
+            Err(e) => {
+                tracing::error!("Failed to list bucket contents: {}", e);
+                return error_response("Failed to load bucket contents");
+            }
+        };
 
     // Build path segments for breadcrumb
     let path_segments = build_path_segments(&current_path);
@@ -102,7 +105,10 @@ pub async fn handler(
         })
         .collect();
 
-    let api_url = config.api_url.clone().unwrap_or_else(|| "http://localhost:3000".to_string());
+    let api_url = config
+        .api_url
+        .clone()
+        .unwrap_or_else(|| "http://localhost:3000".to_string());
 
     let template = BucketExplorerTemplate {
         bucket_id: bucket_id.to_string(),

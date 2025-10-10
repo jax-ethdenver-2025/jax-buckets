@@ -199,9 +199,7 @@ mod tests {
         // Add a share
         let secret = Secret::generate();
         let root = Link::default();
-        bucket
-            .add_share(owner, root.clone(), secret)
-            .unwrap();
+        bucket.add_share(owner, root.clone(), secret).unwrap();
 
         // Encode
         let encoded = bucket.encode().unwrap();

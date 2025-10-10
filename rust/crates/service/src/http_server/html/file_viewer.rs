@@ -49,7 +49,8 @@ pub async fn handler(
     };
 
     // Get file content
-    let file_content = match mount_ops::get_file_content(bucket_id, file_path.clone(), &state).await {
+    let file_content = match mount_ops::get_file_content(bucket_id, file_path.clone(), &state).await
+    {
         Ok(content) => content,
         Err(e) => {
             tracing::error!("Failed to get file content: {}", e);
@@ -70,14 +71,21 @@ pub async fn handler(
         || file_content.mime_type.starts_with("audio/")
     {
         // Encode as base64 for embedded display
-        (false, base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &file_content.data))
+        (
+            false,
+            base64::Engine::encode(
+                &base64::engine::general_purpose::STANDARD,
+                &file_content.data,
+            ),
+        )
     } else {
         // Try to decode as UTF-8 text
         match String::from_utf8(file_content.data.clone()) {
             Ok(text) => (true, text),
             Err(_) => {
                 // Binary content - show hex dump
-                let hex = file_content.data
+                let hex = file_content
+                    .data
                     .chunks(16)
                     .enumerate()
                     .map(|(i, chunk)| {

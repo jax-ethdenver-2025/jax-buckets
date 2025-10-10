@@ -66,7 +66,10 @@ pub async fn handler(
         })
         .collect();
 
-    let api_url = config.api_url.clone().unwrap_or_else(|| "http://localhost:3000".to_string());
+    let api_url = config
+        .api_url
+        .clone()
+        .unwrap_or_else(|| "http://localhost:3000".to_string());
 
     let template = BucketsTemplate {
         buckets: display_buckets,

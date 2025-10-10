@@ -44,12 +44,12 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
     let mut handles = Vec::new();
 
     // Get listen addresses from config
-    let html_listen_addr = service_config.html_listen_addr.unwrap_or_else(|| {
-        SocketAddr::from_str("0.0.0.0:8080").unwrap()
-    });
-    let api_listen_addr = service_config.api_listen_addr.unwrap_or_else(|| {
-        SocketAddr::from_str("0.0.0.0:3000").unwrap()
-    });
+    let html_listen_addr = service_config
+        .html_listen_addr
+        .unwrap_or_else(|| SocketAddr::from_str("0.0.0.0:8080").unwrap());
+    let api_listen_addr = service_config
+        .api_listen_addr
+        .unwrap_or_else(|| SocketAddr::from_str("0.0.0.0:3000").unwrap());
 
     // Start HTML server
     let html_state = state.clone();

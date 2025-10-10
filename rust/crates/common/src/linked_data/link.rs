@@ -124,6 +124,6 @@ impl Link {
         let node_addr = NodeAddr::new(*source);
         // NOTE (amiller68): the initializer of blob ticket is essentially
         //  a no-op on version 0.35.0, so this is def safe
-        BlobTicket::new(node_addr, self.1, self.2).expect("valid block ticket")
+        BlobTicket::new(node_addr, self.1, self.2)
     }
 }

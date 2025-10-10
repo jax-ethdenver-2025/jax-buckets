@@ -41,7 +41,9 @@ pub async fn handler(
     let mount = crate::mount_ops::load_mount_for_bucket(req.bucket_id, &state)
         .await
         .map_err(|e| match e {
-            crate::mount_ops::MountOpsError::BucketNotFound(id) => MountHandlerError::BucketNotFound(id),
+            crate::mount_ops::MountOpsError::BucketNotFound(id) => {
+                MountHandlerError::BucketNotFound(id)
+            }
             crate::mount_ops::MountOpsError::Mount(me) => MountHandlerError::Mount(me),
             e => MountHandlerError::MountOps(e.to_string()),
         })?;
@@ -82,7 +84,9 @@ impl IntoResponse for MountHandlerError {
                 format!("Bucket not found: {}", id),
             )
                 .into_response(),
-            MountHandlerError::Database(_) | MountHandlerError::MountOps(_) | MountHandlerError::Mount(_) => (
+            MountHandlerError::Database(_)
+            | MountHandlerError::MountOps(_)
+            | MountHandlerError::Mount(_) => (
                 http::StatusCode::INTERNAL_SERVER_ERROR,
                 "Unexpected error".to_string(),
             )

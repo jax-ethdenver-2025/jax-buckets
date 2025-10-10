@@ -37,18 +37,14 @@ pub async fn handler(
     Json(req): Json<CatRequest>,
 ) -> Result<impl IntoResponse, CatError> {
     // Use mount_ops to get file content
-    let file_content = crate::mount_ops::get_file_content(
-        req.bucket_id,
-        req.path.clone(),
-        &state,
-    )
-    .await
-    .map_err(|e| match e {
-        crate::mount_ops::MountOpsError::BucketNotFound(id) => CatError::BucketNotFound(id),
-        crate::mount_ops::MountOpsError::InvalidPath(msg) => CatError::InvalidPath(msg),
-        crate::mount_ops::MountOpsError::Mount(me) => CatError::Mount(me),
-        e => CatError::MountOps(e.to_string()),
-    })?;
+    let file_content = crate::mount_ops::get_file_content(req.bucket_id, req.path.clone(), &state)
+        .await
+        .map_err(|e| match e {
+            crate::mount_ops::MountOpsError::BucketNotFound(id) => CatError::BucketNotFound(id),
+            crate::mount_ops::MountOpsError::InvalidPath(msg) => CatError::InvalidPath(msg),
+            crate::mount_ops::MountOpsError::Mount(me) => CatError::Mount(me),
+            e => CatError::MountOps(e.to_string()),
+        })?;
 
     // Encode as base64 for JSON transport
     let content = base64::engine::general_purpose::STANDARD.encode(&file_content.data);

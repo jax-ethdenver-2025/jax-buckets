@@ -10,7 +10,6 @@ mod types;
 
 // Re-export types
 pub use error::MountOpsError;
-pub use get_bucket_shares::ShareInfo;
 pub use types::{BucketInfo, FileInfo};
 
 // Re-export functions

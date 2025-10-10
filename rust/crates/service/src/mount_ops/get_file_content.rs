@@ -46,7 +46,9 @@ pub async fn get_file_content(
         })
     })
     .await
-    .map_err(|e| MountOpsError::Mount(common::prelude::MountError::Default(anyhow::anyhow!(e))))??;
+    .map_err(|e| {
+        MountOpsError::Mount(common::prelude::MountError::Default(anyhow::anyhow!(e)))
+    })??;
 
     Ok(FileContent { data, mime_type })
 }
