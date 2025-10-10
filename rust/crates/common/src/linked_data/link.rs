@@ -7,7 +7,7 @@ use crate::crypto::PublicKey;
 use super::ipld::{Cid, LinkedData, Multihash, BLAKE3_HASH_CODE, LD_CBOR_CODEC, LD_RAW_CODEC};
 
 /// TODO (amiller68): revisit a better way to serialize this
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Link(u64, Hash, BlobFormat);
 
 // TODO (amiller68): i am really not sure if we need the BlobFormat

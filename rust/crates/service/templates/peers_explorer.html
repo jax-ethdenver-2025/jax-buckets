@@ -35,7 +35,7 @@
                 </div>
                 <div>
                     <div class="text-2xl font-bold">{{ total_peers }}</div>
-                    <div class="text-sm text-muted-foreground">Peers with Access</div>
+                    <div class="text-sm text-muted-foreground">Additional Peers</div>
                 </div>
             </div>
         </div>
@@ -54,27 +54,43 @@
             <h2 class="text-lg font-semibold">Peers</h2>
         </div>
         <div class="overflow-x-auto">
-            <table class="uk-table uk-table-divider uk-table-hover uk-table-small">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Public Key</th>
-                        <th>Role</th>
-                        <th>Root Link</th>
+            <table class="w-full">
+                <thead class="bg-muted">
+                    <tr class="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        <th class="px-3 py-3 text-left w-12">#</th>
+                        <th class="px-3 py-3 text-left">Public Key</th>
+                        <th class="px-3 py-3 text-left w-24">Role</th>
+                        <th class="px-3 py-3 text-left">Root Link</th>
+                        <th class="px-3 py-3 text-left w-32">Status</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody class="bg-white divide-y divide-gray-200">
                     {% for peer in peers %}
-                    <tr>
-                        <td class="text-muted-foreground">{{ loop.index }}</td>
-                        <td>
-                            <code class="text-xs bg-muted px-2 py-1 rounded">{{ peer.public_key }}</code>
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-3 py-3 text-xs text-muted-foreground">{{ loop.index }}</td>
+                        <td class="px-3 py-3">
+                            <code class="inline-block text-xs bg-muted px-2 py-1 rounded font-mono cursor-pointer hover:bg-gray-200"
+                                  onclick="navigator.clipboard.writeText('{{ peer.public_key }}')"
+                                  title="{{ peer.public_key }} (click to copy)">
+                                {{ peer.public_key_short }}
+                            </code>
                         </td>
-                        <td>
-                            <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">{{ peer.role }}</span>
+                        <td class="px-3 py-3">
+                            <span class="inline-block px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
+                                {{ peer.role }}
+                            </span>
                         </td>
-                        <td>
-                            <code class="text-xs bg-muted px-2 py-1 rounded">{{ peer.root_link }}</code>
+                        <td class="px-3 py-3">
+                            <code class="inline-block text-xs bg-muted px-2 py-1 rounded font-mono cursor-pointer hover:bg-gray-200"
+                                  onclick="navigator.clipboard.writeText('{{ peer.root_link }}')"
+                                  title="{{ peer.root_link }} (click to copy)">
+                                {{ peer.root_link_short }}
+                            </code>
+                        </td>
+                        <td class="px-3 py-3">
+                            <span class="inline-block px-2 py-1 {{ peer.status_class }} rounded text-xs font-semibold">
+                                {{ peer.status }}
+                            </span>
                         </td>
                     </tr>
                     {% endfor %}

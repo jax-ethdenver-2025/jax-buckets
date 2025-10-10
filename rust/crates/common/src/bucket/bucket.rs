@@ -162,6 +162,10 @@ impl BucketData {
     pub fn set_pins(&mut self, pins_link: Link) {
         self.pins = Some(pins_link);
     }
+
+    pub fn previous(&self) -> &Option<Link> {
+        &self.previous
+    }
 }
 
 #[cfg(test)]

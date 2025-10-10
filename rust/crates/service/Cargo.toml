@@ -28,6 +28,7 @@ tracing-subscriber = { workspace = true }
 
 # async
 tokio = { workspace = true }
+async-trait = "0.1"
 
 # http
 askama = { workspace = true }

@@ -17,6 +17,7 @@ serde = { workspace = true }
 serde_with.workspace = true
 uuid.workspace = true
 pem = { workspace = true }
+async-trait = "0.1"
 
 # crypto
 aes-kw = { version = "0.2", features = ["alloc"] }
@@ -40,6 +41,7 @@ futures.workspace = true
 tokio.workspace = true
 parking_lot.workspace = true
 tempfile = "3.8"
+tracing.workspace = true
 
 [build-dependencies]
 chrono = { workspace = true }

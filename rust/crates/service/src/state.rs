@@ -1,7 +1,9 @@
+use std::sync::Arc;
 use url::Url;
 
 use super::config::Config;
 use super::database::{Database, DatabaseSetupError};
+use super::jax_state::JaxState;
 
 use common::prelude::*;
 
@@ -29,8 +31,17 @@ impl State {
         tracing::info!("Database URL: {:?}", sqlite_database_url);
         let database = Database::connect(&sqlite_database_url).await?;
 
-        // build our node
-        let mut node_builder = Peer::builder();
+        // Create JAX protocol state first
+        // Note: JaxState doesn't need blobs store at construction time,
+        // only when check_bucket_sync is called
+        let jax_state = Arc::new(JaxState::new(
+            database.clone(),
+        ));
+
+        // build our node with the protocol state
+        let mut node_builder = Peer::builder()
+            .protocol_state(jax_state.clone());
+
         // set the socket addr if specified
         if config.node_listen_addr.is_some() {
             node_builder = node_builder.socket_addr(config.node_listen_addr.unwrap());
@@ -44,9 +55,13 @@ impl State {
             node_builder =
                 node_builder.blobs_store_path(config.node_blobs_store_path.clone().unwrap());
         }
-        // build the node
+
+        // Build the node once with protocol state
         let node = node_builder.build().await;
-        tracing::info!("Node id: {}", node.id());
+        tracing::info!("Node id: {} (with JAX protocol)", node.id());
+
+        // Now that the node is built, set the blobs store in JaxState
+        jax_state.set_blobs(node.blobs().clone());
 
         Ok(Self { node, database })
     }
