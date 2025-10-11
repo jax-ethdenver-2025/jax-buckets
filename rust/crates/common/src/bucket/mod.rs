@@ -1,10 +1,11 @@
-#[allow(clippy::module_inception)]
-mod bucket;
+mod manifest;
 mod maybe_mime;
+mod mount;
 mod node;
+mod pins;
 mod principal;
 
-pub use bucket::BucketData;
-// Temporary alias for backward compatibility during refactoring
+pub use manifest::Manifest;
+pub use mount::{Mount, MountError};
 pub use node::{Node, NodeError, NodeLink};
-pub use BucketData as Bucket;
+pub use pins::Pins;

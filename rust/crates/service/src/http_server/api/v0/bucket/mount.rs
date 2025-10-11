@@ -22,7 +22,6 @@ pub struct MountResponse {
     pub bucket_id: Uuid,
     pub bucket_name: String,
     pub bucket_link: Link,
-    pub root_link: Link,
 }
 
 pub async fn handler(
@@ -38,7 +37,18 @@ pub async fn handler(
         .ok_or_else(|| MountHandlerError::BucketNotFound(req.bucket_id))?;
 
     // Load mount using mount_ops helper
-    let mount = crate::mount_ops::load_mount_for_bucket(req.bucket_id, &state)
+    let _mount = crate::mount_ops::load_mount_for_bucket(req.bucket_id, &state)
+        .await
+        .map_err(|e| match e {
+            crate::mount_ops::MountOpsError::BucketNotFound(id) => {
+                MountHandlerError::BucketNotFound(id)
+            }
+            crate::mount_ops::MountOpsError::Mount(me) => MountHandlerError::Mount(me),
+            e => MountHandlerError::MountOps(e.to_string()),
+        })?;
+
+    // Load mount using mount_ops helper
+    let _mount = crate::mount_ops::load_mount_for_bucket(req.bucket_id, &state)
         .await
         .map_err(|e| match e {
             crate::mount_ops::MountOpsError::BucketNotFound(id) => {
@@ -50,7 +60,6 @@ pub async fn handler(
 
     // Get links from mount
     let bucket_link: Link = bucket.link.into();
-    let root_link = mount.inner().root_link().clone();
 
     Ok((
         http::StatusCode::OK,
@@ -58,7 +67,6 @@ pub async fn handler(
             bucket_id: bucket.id,
             bucket_name: bucket.name,
             bucket_link,
-            root_link,
         }),
     )
         .into_response())

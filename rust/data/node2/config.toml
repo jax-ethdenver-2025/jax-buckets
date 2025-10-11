@@ -1,0 +1,2 @@
+html_listen_addr = "0.0.0.0:8081"
+api_listen_addr = "0.0.0.0:3001"

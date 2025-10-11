@@ -1,15 +1,22 @@
-{% extends "base.html" %}
-
-{% block title %}{{ bucket_name }} - Peers - Jax{% endblock %}
-
-{% block content %}
+{% extends "base.html" %} {% block title %}{{ bucket_name }} - Peers - Jax{%
+endblock %} {% block content %}
 <div class="max-w-6xl mx-auto space-y-6">
     <!-- Breadcrumb navigation -->
     <nav aria-label="Breadcrumb">
         <ol class="flex items-center gap-2 text-sm">
-            <li><a href="/buckets" class="text-primary hover:underline">Buckets</a></li>
+            <li>
+                <a href="/buckets" class="text-primary hover:underline"
+                    >Buckets</a
+                >
+            </li>
             <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
-            <li><a href="/buckets/{{ bucket_id }}" class="text-primary hover:underline">{{ bucket_name }}</a></li>
+            <li>
+                <a
+                    href="/buckets/{{ bucket_id }}"
+                    class="text-primary hover:underline"
+                    >{{ bucket_name }}</a
+                >
+            </li>
             <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
             <li class="text-muted-foreground">Peers</li>
         </ol>
@@ -20,7 +27,10 @@
             <i class="fas fa-users mr-2"></i>Bucket Peers
         </h1>
         <div class="flex gap-2">
-            <button onclick="window.location.reload()" class="button bg-primary text-white hover:bg-primary-dark">
+            <button
+                onclick="window.location.reload()"
+                class="button bg-primary text-white hover:bg-primary-dark"
+            >
                 <i class="fas fa-sync-alt"></i> Refresh Pings
             </button>
             <a href="/buckets/{{ bucket_id }}" class="button">
@@ -38,7 +48,9 @@
                 </div>
                 <div>
                     <div class="text-2xl font-bold">{{ total_peers }}</div>
-                    <div class="text-sm text-muted-foreground">Additional Peers</div>
+                    <div class="text-sm text-muted-foreground">
+                        Additional Peers
+                    </div>
                 </div>
             </div>
         </div>
@@ -59,39 +71,41 @@
         <div class="overflow-x-auto">
             <table class="w-full">
                 <thead class="bg-muted">
-                    <tr class="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <tr
+                        class="text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                    >
                         <th class="px-3 py-3 text-left w-12">#</th>
                         <th class="px-3 py-3 text-left">Public Key</th>
                         <th class="px-3 py-3 text-left w-24">Role</th>
-                        <th class="px-3 py-3 text-left">Root Link</th>
                         <th class="px-3 py-3 text-left w-32">Status</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
                     {% for peer in peers %}
                     <tr class="hover:bg-gray-50">
-                        <td class="px-3 py-3 text-xs text-muted-foreground">{{ loop.index }}</td>
+                        <td class="px-3 py-3 text-xs text-muted-foreground">
+                            {{ loop.index }}
+                        </td>
                         <td class="px-3 py-3">
-                            <code class="inline-block text-xs bg-muted px-2 py-1 rounded font-mono cursor-pointer hover:bg-gray-200"
-                                  onclick="navigator.clipboard.writeText('{{ peer.public_key }}')"
-                                  title="{{ peer.public_key }} (click to copy)">
+                            <code
+                                class="inline-block text-xs bg-muted px-2 py-1 rounded font-mono cursor-pointer hover:bg-gray-200"
+                                onclick="navigator.clipboard.writeText('{{ peer.public_key }}')"
+                                title="{{ peer.public_key }} (click to copy)"
+                            >
                                 {{ peer.public_key_short }}
                             </code>
                         </td>
                         <td class="px-3 py-3">
-                            <span class="inline-block px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
+                            <span
+                                class="inline-block px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold"
+                            >
                                 {{ peer.role }}
                             </span>
                         </td>
                         <td class="px-3 py-3">
-                            <code class="inline-block text-xs bg-muted px-2 py-1 rounded font-mono cursor-pointer hover:bg-gray-200"
-                                  onclick="navigator.clipboard.writeText('{{ peer.root_link }}')"
-                                  title="{{ peer.root_link }} (click to copy)">
-                                {{ peer.root_link_short }}
-                            </code>
-                        </td>
-                        <td class="px-3 py-3">
-                            <span class="inline-block px-2 py-1 {{ peer.status_class }} rounded text-xs font-semibold">
+                            <span
+                                class="inline-block px-2 py-1 {{ peer.status_class }} rounded text-xs font-semibold"
+                            >
                                 {{ peer.status }}
                             </span>
                         </td>

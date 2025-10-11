@@ -5,9 +5,9 @@ use std::io::Cursor;
 use std::path::PathBuf;
 use uuid::Uuid;
 
-use common::prelude::{Link, Mount, MountError};
+use common::prelude::Link;
 
-use crate::sync_manager::SyncEvent;
+use crate::mount_ops::{add_data_to_bucket, MountOpsError};
 use crate::ServiceState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,7 +26,6 @@ pub struct AddRequest {
 pub struct AddResponse {
     pub mount_path: String,
     pub link: Link,
-    pub bucket_link: Link,
     pub mime_type: String,
 }
 
@@ -35,8 +34,6 @@ pub async fn handler(
     State(state): State<ServiceState>,
     mut multipart: Multipart,
 ) -> Result<impl IntoResponse, AddError> {
-    use crate::database::models::Bucket as BucketModel;
-
     let mut bucket_id: Option<Uuid> = None;
     let mut mount_path: Option<String> = None;
     let mut file_data: Option<Vec<u8>> = None;
@@ -105,78 +102,32 @@ pub async fn handler(
         mime_type
     );
 
-    // Get bucket from database
-    let bucket = BucketModel::get_by_id(&bucket_id, state.database())
-        .await
-        .map_err(|e| AddError::Database(e.to_string()))?
-        .ok_or_else(|| AddError::BucketNotFound(bucket_id))?;
-
-    // Load mount
-    let bucket_link: Link = bucket.link.into();
-    let secret_key = state.node().secret();
-    let blobs = state.node().blobs();
-
-    let mut mount = Mount::load(&bucket_link, secret_key, blobs).await?;
-
-    tracing::info!("Mount loaded");
-
+    // Detect MIME type from file extension
+    let mime_type = mime_guess::from_path(&mount_path_buf)
+        .first_or_octet_stream()
+        .to_string();
     // Clone for blocking task
-    let blobs_clone = blobs.clone();
     let mount_path_clone = mount_path_buf.clone();
+    let state_clone = state.clone();
 
     // Run file operations in blocking task
-    let (new_bucket_link, root_node_link) =
-        tokio::task::spawn_blocking(move || -> Result<(Link, Link), MountError> {
-            // Create a cursor from the file data
-            let cursor = Cursor::new(file_data);
-
-            tokio::runtime::Handle::current().block_on(async {
-                tracing::info!("Adding file to mount");
-                mount.add(&mount_path_clone, cursor, &blobs_clone).await?;
-                tracing::info!("File added to mount");
-
-                // Save the mount (updates bucket in blobs)
-                tracing::info!("Saving mount");
-                let bucket_link = mount.save(&blobs_clone).await?;
-                tracing::info!("Mount saved with new bucket link");
-
-                let root_link = mount.root_link();
-                Ok((bucket_link, root_link))
-            })
+    let new_bucket_link = tokio::task::spawn_blocking(move || -> Result<Link, MountOpsError> {
+        // Create a cursor from the file data
+        let reader = Cursor::new(file_data);
+        tokio::runtime::Handle::current().block_on(async {
+            let bucket_link =
+                add_data_to_bucket(bucket_id, mount_path_clone, reader, &state_clone).await?;
+            Ok(bucket_link)
         })
-        .await
-        .map_err(|e| AddError::Mount(MountError::Default(anyhow::anyhow!(e))))??;
-
-    // Update bucket link in database
-    bucket
-        .update_link(new_bucket_link.clone(), state.database())
-        .await
-        .map_err(|e| AddError::Database(e.to_string()))?;
-
-    // Trigger push sync to announce the new version to peers
-    tracing::debug!(
-        "Triggering push sync for bucket {} with new link {:?}",
-        bucket_id,
-        new_bucket_link
-    );
-    if let Err(e) = state.send_sync_event(SyncEvent::Push {
-        bucket_id,
-        new_link: new_bucket_link.clone(),
-    }) {
-        tracing::warn!(
-            "Failed to trigger push sync for bucket {}: {:?}",
-            bucket_id,
-            e
-        );
-        // Don't fail the request if sync event fails - the file was added successfully
-    }
+    })
+    .await
+    .map_err(|e| AddError::Default(anyhow::anyhow!("Task join error: {}", e)))??;
 
     Ok((
         http::StatusCode::OK,
         axum::Json(AddResponse {
             mount_path,
-            link: root_node_link,
-            bucket_link: new_bucket_link,
+            link: new_bucket_link,
             mime_type,
         }),
     )
@@ -185,6 +136,8 @@ pub async fn handler(
 
 #[derive(Debug, thiserror::Error)]
 pub enum AddError {
+    #[error("Default error: {0}")]
+    Default(anyhow::Error),
     #[error("Bucket not found: {0}")]
     BucketNotFound(Uuid),
     #[error("Invalid path: {0}")]
@@ -195,8 +148,8 @@ pub enum AddError {
     MultipartError(String),
     #[error("Database error: {0}")]
     Database(String),
-    #[error("Mount error: {0}")]
-    Mount(#[from] MountError),
+    #[error("Storage error: {0}")]
+    MountOps(#[from] MountOpsError),
 }
 
 impl IntoResponse for AddError {
@@ -214,7 +167,7 @@ impl IntoResponse for AddError {
                 format!("Bad request: {}", msg),
             )
                 .into_response(),
-            AddError::Database(_) | AddError::Mount(_) => (
+            AddError::Database(_) | AddError::Default(_) | AddError::MountOps(_) => (
                 http::StatusCode::INTERNAL_SERVER_ERROR,
                 "Unexpected error".to_string(),
             )
