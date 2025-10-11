@@ -1,3 +1,28 @@
+//! Secure key sharing using ECDH + AES Key Wrap
+//!
+//! This module implements a protocol for sharing bucket encryption keys between peers.
+//! It combines Elliptic Curve Diffie-Hellman (ECDH) for key agreement with AES Key Wrap (RFC 3394)
+//! for key encryption.
+//!
+//! # Protocol Overview
+//!
+//! To share a secret with a peer:
+//! 1. **Generate ephemeral keypair**: Create a temporary Ed25519 keypair
+//! 2. **Perform ECDH**: Convert keys to X25519 and compute shared secret
+//! 3. **Wrap key**: Use AES-KW to encrypt the bucket secret with the shared secret
+//! 4. **Package**: Create a `Share` containing the ephemeral public key and wrapped secret
+//!
+//! The recipient can recover the secret by:
+//! 1. **Extract ephemeral key**: Read the ephemeral public key from the Share
+//! 2. **Perform ECDH**: Use their private key to compute the same shared secret
+//! 3. **Unwrap key**: Use AES-KW to decrypt the bucket secret
+//!
+//! # Security Properties
+//!
+//! - **Forward Secrecy**: Ephemeral keys are not stored, so past sessions cannot be decrypted
+//! - **Authentication**: The recipient's public key must be known in advance
+//! - **Integrity**: AES-KW provides authentication of the wrapped key
+
 use std::convert::TryFrom;
 
 use aes_kw::KekAes256 as Kek;
@@ -6,15 +31,15 @@ use serde::{Deserialize, Serialize};
 use super::keys::{KeyError, PublicKey, SecretKey, PUBLIC_KEY_SIZE};
 use super::secret::{Secret, SecretError, SECRET_SIZE};
 
-// Aes-Kw nonce size (just eight bytes)
+/// Size of AES Key Wrap padding/nonce in bytes
 pub const KW_NONCE_SIZE: usize = 8;
-// Total expected byte lenght for the Share, which is a:
-//  - ephemeral public key,(32 bytes)
-//  - aes-kw nonce, (8 bytes)
-//  - and wrapped key (same length as the original aes secret, 32 bytes)
-// for a total of 72 bytes
-pub const SHARE_SIZE: usize = KW_NONCE_SIZE + PUBLIC_KEY_SIZE + SECRET_SIZE;
+/// Total size of a Share in bytes
+///
+/// Layout: ephemeral_pubkey (32) || wrapped_secret (40) = 72 bytes
+/// Note: AES-KW adds 8 bytes of padding to the 32-byte secret, resulting in 40 bytes
+pub const SHARE_SIZE: usize = PUBLIC_KEY_SIZE + SECRET_SIZE + KW_NONCE_SIZE;
 
+/// Errors that can occur during share creation or recovery
 #[derive(Debug, thiserror::Error)]
 pub enum ShareError {
     #[error("share error: {0}")]
@@ -25,6 +50,31 @@ pub enum ShareError {
     Secret(#[from] SecretError),
 }
 
+/// A cryptographic share that securely wraps a secret for a specific recipient
+///
+/// A `Share` contains an ephemeral public key and an AES-KW wrapped secret.
+/// Only the intended recipient (whose public key was used during creation) can recover the secret.
+///
+/// # Wire Format
+///
+/// ```text
+/// [ ephemeral_pubkey: 32 bytes ][ wrapped_secret: 40 bytes ]
+/// ```
+///
+/// # Examples
+///
+/// ```ignore
+/// // Alice wants to share a bucket secret with Bob
+/// let bucket_secret = Secret::generate();
+/// let bob_pubkey = bob_secret_key.public();
+///
+/// // Alice creates a share for Bob
+/// let share = Share::new(&bucket_secret, &bob_pubkey)?;
+///
+/// // Bob can recover the secret using his private key
+/// let recovered_secret = share.recover(&bob_secret_key)?;
+/// assert_eq!(bucket_secret, recovered_secret);
+/// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct Share(pub(crate) [u8; SHARE_SIZE]);
 
@@ -130,11 +180,9 @@ impl TryFrom<&[u8]> for Share {
 }
 
 impl Share {
-    /**
-     * Decode a Share from a hex string.
-     *  Optionally allows a '0x' prefix.
-     *  Supports hex-only encoding as well.
-     */
+    /// Parse a share from a hexadecimal string
+    ///
+    /// Accepts both plain hex and "0x"-prefixed hex strings.
     pub fn from_hex(hex: &str) -> Result<Self, ShareError> {
         let hex = hex.strip_prefix("0x").unwrap_or(hex);
         let mut buff = [0; SHARE_SIZE];
@@ -142,17 +190,29 @@ impl Share {
         Ok(Share::from(buff))
     }
 
+    /// Convert share to hexadecimal string
     #[allow(clippy::wrong_self_convention)]
     pub fn to_hex(&self) -> String {
         hex::encode(self.0)
     }
 
-    /**
-     * Generate a new share from a secret and target recipient
-     *  This will:
-     *   - generate an ephemeral key pair 'E' to use with the share
-     *   - create a shared secret using 'E' for the target recipient 'R'
-     */
+    /// Create a new share that wraps a secret for a specific recipient
+    ///
+    /// This uses ECDH + AES Key Wrap to securely share the secret:
+    /// 1. Generates an ephemeral Ed25519 keypair
+    /// 2. Converts both keys to X25519 for ECDH
+    /// 3. Performs ECDH to derive a shared secret
+    /// 4. Uses AES-KW to wrap the secret with the shared secret
+    /// 5. Returns a Share containing [ephemeral_pubkey || wrapped_secret]
+    ///
+    /// # Arguments
+    ///
+    /// * `secret` - The secret to share (e.g., a bucket encryption key)
+    /// * `recipient` - The public key of the intended recipient
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if key conversion or encryption fails.
     pub fn new(secret: &Secret, recipient: &PublicKey) -> Result<Self, ShareError> {
         // Generate ephemeral Ed25519 keypair
         let ephemeral_private = SecretKey::generate();
@@ -190,9 +250,29 @@ impl Share {
         Ok(share)
     }
 
-    /**
-     * Recover a share using the recipient's private key
-     */
+    /// Recover the wrapped secret using the recipient's private key
+    ///
+    /// This reverses the wrapping process:
+    /// 1. Extracts the ephemeral public key from the Share
+    /// 2. Converts keys to X25519 for ECDH
+    /// 3. Performs ECDH to derive the same shared secret
+    /// 4. Uses AES-KW to unwrap the secret
+    ///
+    /// # Arguments
+    ///
+    /// * `recipient_secret` - The recipient's private key (must match the public key used in `new`)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Key conversion fails
+    /// - AES-KW unwrapping fails (wrong key or corrupted data)
+    /// - Unwrapped secret has incorrect size
+    ///
+    /// # Security Note
+    ///
+    /// If this function returns an error, it means either the Share was created for a different
+    /// recipient, the data was corrupted, or an attacker tampered with it.
     pub fn recover(&self, recipient_secret: &SecretKey) -> Result<Secret, ShareError> {
         // Extract the ephemeral public key
         let ephemeral_public_bytes = &self.0[..PUBLIC_KEY_SIZE];
@@ -224,6 +304,7 @@ impl Share {
         Ok(Secret::from(secret_bytes))
     }
 
+    /// Get a reference to the raw share bytes
     pub fn bytes(&self) -> &[u8] {
         &self.0
     }

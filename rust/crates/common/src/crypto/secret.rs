@@ -1,3 +1,11 @@
+//! Content encryption using ChaCha20-Poly1305
+//!
+//! This module provides symmetric encryption for bucket data. Each encrypted item
+//! (nodes, files) has its own unique `Secret` key, providing:
+//! - **Content-addressed storage**: Encrypted data can be hashed deterministically
+//! - **Per-item encryption**: Compromising one key doesn't affect other items
+//! - **Efficient key rotation**: Can re-encrypt specific items without touching others
+
 use std::io::Read;
 use std::ops::Deref;
 
@@ -8,14 +16,15 @@ use chacha20poly1305::{
 };
 use serde::{Deserialize, Serialize};
 
-// ChaCha20-Poly1305 uses 12-byte nonces
+/// Size of ChaCha20-Poly1305 nonce in bytes
 pub const NONCE_SIZE: usize = 12;
-// ChaCha20-Poly1305 uses 32-byte keys
+/// Size of ChaCha20-Poly1305 key in bytes (256 bits)
 pub const SECRET_SIZE: usize = 32;
-// Chunk size for streaming (can be any size)
+/// Default chunk size for streaming operations
 #[allow(dead_code)]
 pub const CHUNK_SIZE: usize = 4096;
 
+/// Errors that can occur during encryption/decryption
 #[derive(Debug, thiserror::Error)]
 pub enum SecretError {
     #[error("secret error: {0}")]
@@ -24,6 +33,25 @@ pub enum SecretError {
     Io(#[from] std::io::Error),
 }
 
+/// A 256-bit symmetric encryption key for content encryption
+///
+/// Each `Secret` is used to encrypt a single item (node or data blob) using ChaCha20-Poly1305 AEAD.
+/// The encrypted format is: `nonce (12 bytes) || ciphertext (variable) || tag (16 bytes)`.
+///
+/// # Examples
+///
+/// ```ignore
+/// // Generate a new random secret
+/// let secret = Secret::generate();
+///
+/// // Encrypt data
+/// let plaintext = b"sensitive data";
+/// let ciphertext = secret.encrypt(plaintext)?;
+///
+/// // Decrypt data
+/// let recovered = secret.decrypt(&ciphertext)?;
+/// assert_eq!(plaintext, &recovered[..]);
+/// ```
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Secret([u8; SECRET_SIZE]);
 
@@ -47,12 +75,18 @@ impl From<[u8; SECRET_SIZE]> for Secret {
 }
 
 impl Secret {
+    /// Generate a new random secret using a cryptographically secure RNG
     pub fn generate() -> Self {
         let mut buff = [0; SECRET_SIZE];
         getrandom::getrandom(&mut buff).expect("failed to generate random bytes");
         Self(buff)
     }
 
+    /// Create a secret from a byte slice
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the slice length is not exactly `SECRET_SIZE` bytes.
     pub fn from_slice(data: &[u8]) -> Result<Self, SecretError> {
         if data.len() != SECRET_SIZE {
             return Err(anyhow::anyhow!(
@@ -67,16 +101,24 @@ impl Secret {
         Ok(buff.into())
     }
 
+    /// Get a reference to the secret key bytes
     pub fn bytes(&self) -> &[u8] {
         self.0.as_ref()
     }
 
-    // Small payload encryption (keeps your existing API)
+    /// Encrypt data using ChaCha20-Poly1305 AEAD
+    ///
+    /// The output format is: `nonce (12 bytes) || ciphertext || auth_tag (16 bytes)`.
+    /// A random nonce is generated for each encryption operation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if encryption fails (should be rare, only on system RNG failure).
     pub fn encrypt(&self, data: &[u8]) -> Result<Vec<u8>, SecretError> {
         let key = Key::from_slice(self.bytes());
         let cipher = ChaCha20Poly1305::new(key);
 
-        // Generate nonce manually
+        // Generate random nonce
         let mut nonce_bytes = [0u8; NONCE_SIZE];
         getrandom::getrandom(&mut nonce_bytes)
             .map_err(|e| anyhow::anyhow!("failed to generate nonce: {}", e))?;
@@ -93,6 +135,15 @@ impl Secret {
         Ok(out)
     }
 
+    /// Decrypt data using ChaCha20-Poly1305 AEAD
+    ///
+    /// Expects input in the format: `nonce (12 bytes) || ciphertext || auth_tag (16 bytes)`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Data is too short to contain a nonce
+    /// - Authentication tag verification fails (data was tampered with or wrong key)
     pub fn decrypt(&self, data: &[u8]) -> Result<Vec<u8>, SecretError> {
         if data.len() < NONCE_SIZE {
             return Err(anyhow::anyhow!("data too short for nonce").into());
@@ -108,13 +159,14 @@ impl Secret {
         Ok(decrypted.to_vec())
     }
 
-    // Create an encrypted reader that can be consumed by a stream
+    /// Create an encrypted reader from a plaintext reader
+    ///
+    /// This buffers all data in memory, encrypts it, and returns a reader over the encrypted data.
+    /// Future optimization: implement true streaming encryption.
     pub fn encrypt_reader<R>(&self, reader: R) -> Result<impl Read, SecretError>
     where
         R: Read,
     {
-        // For now, we'll read all data and encrypt it
-        // This could be optimized to a true streaming implementation later
         let mut data = Vec::new();
         let mut reader = reader;
         reader.read_to_end(&mut data).map_err(SecretError::Io)?;
@@ -123,13 +175,14 @@ impl Secret {
         Ok(std::io::Cursor::new(encrypted))
     }
 
-    // Create a decrypted reader from encrypted data
+    /// Create a decrypted reader from an encrypted reader
+    ///
+    /// This buffers all encrypted data in memory, decrypts it, and returns a reader over the plaintext.
+    /// Future optimization: implement true streaming decryption.
     pub fn decrypt_reader<R>(&self, reader: R) -> Result<impl Read, SecretError>
     where
         R: Read,
     {
-        // For now, we'll read all data and decrypt it
-        // This could be optimized to a true streaming implementation later
         let mut encrypted_data = Vec::new();
         let mut reader = reader;
         reader

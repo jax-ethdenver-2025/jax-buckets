@@ -1,109 +1,474 @@
-# Generic Fullstack
+# JaxBucket
 
-Take a look at the [deployed demo](https://generic.krondor.org)
+**End-to-End Encrypted Storage Buckets with Peer-to-Peer Synchronization**
 
-This repository contains a couple different patterns for building full stack applications I've developed over the years, with focuses on:
-- type safe and ergonomic implementation patterns
-- rapid iteration and full featured CICD
-- owning the deployment pipeline
-- and a reliance on running applications in containers for portability
+JaxBucket is a local-first, encrypted storage system built on [Iroh](https://iroh.computer/). It provides content-addressed, encrypted file storage with automatic peer-to-peer synchronization between authorized devices.
 
-The purpose of it is to track and publish the sum total of experience i have shipping
- quick weekend projects and experiments with the additional satisfaction of doing so
- with my tools of choice. Note, the described methods herin are:
- - **not audited**: use at your own risk
- - **not infinitely scalable**: note the lack of lambdas, external service providers, and orchestrators.
-    These templates are meant to provide a base for a proof of concept that you might extend into a long lived
-    application. It is up to you to decide on the right deployment surface and implement it. That being
-    said, monoliths are pretty much enough for lots of projects, and that's exactly what you get here!
-- **unfinished** and likely will always be so. Last year I was writing bespoke ansible and managing my SSH
-    keys in my password manager -- things change! be sure to check back for updates, or feel free to contribute one.
+## Features
 
-For more info on my deployment posture, take a look at [my dev ops docs](./docs/dev-ops/index.md)
+- 🔒 **End-to-End Encryption**: All files encrypted with ChaCha20-Poly1305 AEAD
+- 🌐 **P2P Sync**: Automatic synchronization via Iroh's networking stack
+- 📦 **Content-Addressed**: Files and directories stored as immutable, hash-linked DAGs
+- 🔑 **Cryptographic Key Sharing**: ECDH + AES Key Wrap for secure multi-device access
+- 🌳 **Merkle DAG Structure**: Efficient verification and deduplication
+- 🎯 **Local-First**: Works offline, syncs when connected
+- 📌 **Selective Pinning**: Control which content to keep locally
+- 🌍 **DHT Discovery**: Find peers via distributed hash table
 
-## Templates
+## Architecture
 
-### Typescript
+### Overview
 
-**Typescript + pnpm + turbo repo**
+JaxBucket combines three key technologies:
 
-After many years banging my head against the typescript ecosystem, I finally found a development
- pattern that (more or less) works: `pnpm` for package management and `turbo` for monorepo support.
+1. **Iroh**: Provides the networking layer (QUIC, NAT traversal, DHT discovery)
+2. **Content Addressing**: Files and directories are stored as BLAKE3-hashed blobs
+3. **Encryption**: Each node/file has its own encryption key, shared via ECDH
 
-This template is great for:
-- writing simple static or client driven sites
-- one off express services or public APIs
-- situtations where you need access to typescript
-- or otherwise typescript is your team's core skillset
+```text
+┌─────────────────────────────────────────────────┐
+│                   JaxBucket                      │
+├─────────────────────────────────────────────────┤
+│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
+│  │ Buckets  │  │  Crypto  │  │ Sync Manager │  │
+│  │  (DAG)   │  │(ECDH+AES)│  │(Pull/Push)   │  │
+│  └────┬─────┘  └─────┬────┘  └──────┬───────┘  │
+├───────┼──────────────┼───────────────┼──────────┤
+│  ┌────▼──────────────▼───────────────▼───────┐  │
+│  │        Iroh Networking Layer              │  │
+│  │  (QUIC + DHT Discovery + BlobStore)       │  │
+│  └───────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────┘
+```
 
-As is, it comes with:
-- a simple single page static vite application
-- and an express api app with type safe handlers
+### Data Model
 
-It could be readily extended to projects such as:
-- a crypto app with no backend state
-- a quick hackathon project
-- or a public portfolio or static blog
+#### Buckets
 
-I would really like to extend it with:
-- some sort of auth pattern, either based on:
-   - client-side crytpographic keys
-   - a drop in auth proxy
-- backend state via either 
-    - a sql dialect 
-        - (I have yet to find a fully featured and type safe sql tool for typescript projects that I would want to maintain here)
-    - or mongo, which is pretty easy to hack with in typescript
+A **bucket** is a versioned collection of encrypted files and directories. Each bucket has:
 
-### Python
+- **Unique ID**: UUID for global identification
+- **Name**: Human-readable label (not unique)
+- **Manifest**: Unencrypted metadata block containing:
+  - Entry Link: Points to the root directory node
+  - Shares: Map of `PublicKey -> BucketShare` for access control
+  - Pins: Link to the pinset (content to keep locally)
+  - Previous: Link to the prior version (forms a version chain)
+  - Version: Software version metadata
 
-**Python + uv + FastAPI + SqlAchemy + HATEOAS**
+#### Nodes
 
-I recently fell in love with [HATEOAS](https://en.wikipedia.org/wiki/HATEOAS) as a development pattern 
- for apps built on top of REST APIs. I've had alot of fun using tools like [htmx](https://htmx.org/) and [franken ui](https://franken-ui.dev)
- for building pretty, responsive full stack applications against a server written in the language of your choice.
+A **node** represents a directory in the bucket's file tree. Nodes are:
 
-I decided to start protoyping new ideas entirely in Python using this pattern because:
-- there are python libraries for pretty much anything
-- it gets the latest and greatest in patterns for working with LLMs
-- and declaritive execution is handy when it comes to rapid iteration
+- **Encrypted**: Each node is encrypted with its own secret key
+- **DAG-CBOR Encoded**: Serialized using DAG-CBOR before encryption
+- **Content-Addressed**: Hashed after encryption for stable addressing
 
-At the moment this template includes:
-- Handy dev tooling, including hot reloading in response to code changes
-- Ready-to-go local postgres for local hacking
-- Google OAuth (which is pretty much all you need for a simple product)
-- and easy to extend patterns for writing SSR pages and components
+Node structure:
+```rust
+Node {
+    links: BTreeMap<String, NodeLink>
+}
 
-This template is great for:
-- all sorts of full stack applications
-- quick protoyping
+NodeLink::Data(link, secret, metadata)  // File
+NodeLink::Dir(link, secret)              // Subdirectory
+```
 
-I would really like to extend it with:
-- Ready-to-go local redis + background jobs using Arq
-- common sense LLM patterns + maybe a fly wheel implementation against [Tensor Zero](https://www.tensorzero.com/)
+Each `NodeLink` contains:
+- **Link**: Content-addressed pointer (codec + hash + format)
+- **Secret**: Encryption key for decrypting the target
+- **Metadata** (for files): MIME type, custom properties
 
-### Rust
+#### Manifest Deep Dive
 
-TODO: 
-if you peak at [my github repos](https://github.com/amiller68?tab=repositories), you can see I have a few opinions on what makes for a manageable full-stack Rust Web App, largely informed by [my friend sam's work](https://github.com/sstelfox/web-app-template). I'll be moving examples of that work here, and it should eventually include am example detailing:
-- a full-stack axum + htmx web app
-- with OIDC based authorization
-- backed by SQLX and [insert-sql-flavor-here]
-- and a companion CLI tool template
+The `Manifest` type (rust/crates/common/src/bucket/manifest.rs:54) stores bucket metadata:
 
-and maybe some handy patterns for shipping wasm directly to the browser if I get a lil crazy with it.
+```rust
+Manifest {
+    id: Uuid,                    // Global bucket identifier
+    name: String,                // Display name
+    shares: Shares,              // Access control: PublicKey -> BucketShare
+    entry: Link,                 // Root directory node
+    pins: Link,                  // HashSeq of pinned content
+    previous: Option<Link>,      // Previous manifest version
+    version: Version,            // Software version
+}
+```
 
-I don't think this stack is necessarily the best one for quickly protoyping ideas, considering that:
-- the Rust ecosystem is still pretty immature, and you won't find the support for the library or framework you need 100% of the time
-- type checking, a good generic system, and memory safety are amazing, but sometimes get in the way of moving fast
-- good Rust engineers are hard to find, and hard to hire for
+**BucketShare** wraps an encryption secret for a specific peer:
+```rust
+BucketShare {
+    principal: Principal {       // Peer identity + role
+        role: PrincipalRole,     // Owner, Editor, Viewer
+        identity: PublicKey,     // Peer's public key
+    },
+    share: Share,                // ECDH-wrapped bucket secret
+}
+```
 
-BUT its still my favorite in that:
-- Rust is incredibly portable
-- The community's documentation for crates is unmatched by any other language I've worked with
-- Cargo provides an unbeatable developer experience for working with dependencies and feature gaurds
+### Peer Structure
 
+A **peer** (rust/crates/common/src/peer/mod.rs:129) represents a JaxBucket node on the network:
 
-## TODOs
+```rust
+Peer {
+    blob_store: BlobsStore,      // Content storage (Iroh blobs)
+    secret: SecretKey,           // Ed25519 identity keypair
+    endpoint: Endpoint,          // Iroh QUIC endpoint
+    protocol_state: BucketStateProvider, // Access to local bucket state
+}
+```
 
-- I think pulumi might actually be a better fit for provisioning the scope of infrastructure we define for a project like this.
-# jax-buckets
+#### Peer Components
+
+1. **Identity**: Ed25519 keypair (SecretKey/PublicKey)
+   - Public key = NodeId for Iroh networking
+   - Same key used for ECDH key sharing (converted to X25519)
+
+2. **BlobsStore**: Iroh's content-addressed blob storage
+   - Stores encrypted nodes and files
+   - Deduplicates by hash
+   - Supports both Raw blobs and HashSeq (collections)
+
+3. **Endpoint**: Iroh's QUIC networking
+   - NAT traversal via STUN/TURN
+   - DHT-based peer discovery (Mainline DHT)
+   - Custom ALPN protocols (iroh-blobs + jax-protocol)
+
+4. **Protocol State**: Interface to local database
+   - Queries bucket information
+   - Tracks sync status
+   - Handles incoming announcements
+
+### Cryptography
+
+#### Identity & Key Sharing
+
+Each peer has an **Ed25519 keypair**:
+- **SecretKey**: Stored locally (e.g., `~/.config/jax/secret.pem`)
+- **PublicKey**: Used as peer ID and for key sharing
+
+To share a bucket with another peer:
+
+1. **Generate Ephemeral Key**: Create temporary Ed25519 keypair
+2. **ECDH**: Convert to X25519 and compute shared secret
+3. **AES Key Wrap**: Wrap bucket secret with shared secret (RFC 3394)
+4. **Share**: Package as `[ephemeral_pubkey(32) || wrapped_secret(40)]`
+
+The recipient recovers the secret by:
+1. Extract ephemeral public key from Share
+2. Perform ECDH with their private key
+3. Use AES-KW to unwrap the bucket secret
+
+See `rust/crates/common/src/crypto/share.rs` for implementation.
+
+#### Content Encryption
+
+Files and nodes are encrypted with **ChaCha20-Poly1305**:
+
+- **Per-Item Keys**: Each file/node has its own 256-bit secret
+- **AEAD**: Authenticated encryption with additional data
+- **Format**: `nonce(12) || ciphertext || tag(16)`
+
+This provides:
+- **Content-Addressed Storage**: Hashes are stable after encryption
+- **Fine-Grained Access**: Can selectively share keys
+- **Efficient Updates**: Only re-encrypt changed items
+
+See `rust/crates/common/src/crypto/secret.rs` for implementation.
+
+### Synchronization Protocol
+
+JaxBucket implements a custom sync protocol (JAX Protocol) on top of Iroh:
+
+#### Protocol Messages
+
+The protocol (rust/crates/common/src/peer/jax_protocol/messages.rs) defines three operations:
+
+1. **Ping**: Check sync status of a bucket
+   ```rust
+   PingRequest { bucket_id, current_link }
+   → PingResponse { status: NotFound | Behind | InSync | Ahead }
+   ```
+
+2. **Fetch**: Retrieve current bucket link
+   ```rust
+   FetchBucketRequest { bucket_id }
+   → FetchBucketResponse { current_link: Option<Link> }
+   ```
+
+3. **Announce**: Notify peers of new version (fire-and-forget)
+   ```rust
+   AnnounceMessage { bucket_id, new_link, previous_link }
+   ```
+
+#### Sync Workflow
+
+**Pull Sync** (rust/crates/service/src/sync_manager/mod.rs:204):
+
+1. Ping all peers in parallel for the bucket
+2. Find a peer reporting `Ahead` status
+3. Fetch the new bucket link from that peer
+4. Download the manifest blob via Iroh blobs protocol
+5. Verify **single-hop**: peer's previous must equal our current
+6. Download the pinset (HashSeq of required content)
+7. Update database with new link, mark as Synced
+
+**Push Sync** (rust/crates/service/src/sync_manager/mod.rs:420):
+
+1. Get list of peers for the bucket
+2. Read the new manifest to extract previous link
+3. Send announce messages to all peers in parallel
+4. Log results (best-effort delivery)
+
+**Peer Announce Handler** (rust/crates/service/src/sync_manager/mod.rs:483):
+
+1. Receive announce from peer
+2. Verify **provenance**: peer must be in bucket shares
+3. Verify **single-hop**: previous must equal our current
+4. Download manifest and pinset from announcing peer
+5. Update database with new link
+
+#### Sync Verification
+
+Two safety checks prevent invalid updates:
+
+1. **Provenance**: Only peers in the bucket's `shares` can send announces
+2. **Single-Hop**: Updates must reference our current link as `previous`
+   - Prevents accepting stale or forked versions
+   - Ensures linear version history
+   - If check fails, triggers full pull sync to reconcile
+
+### Pinning
+
+**Pins** (rust/crates/common/src/bucket/pins.rs) are a set of content hashes that should be kept locally:
+
+```rust
+Pins(HashSet<Hash>)  // Set of BLAKE3 hashes
+```
+
+When a bucket is saved:
+1. All node hashes are added to pins
+2. Pins are serialized as a **HashSeq** (Iroh's hash list format)
+3. HashSeq is stored as a blob
+4. Manifest points to the pins HashSeq
+
+When syncing:
+1. Download the pins HashSeq from peer
+2. Verify all pinned hashes are available locally
+3. Iroh automatically fetches missing blobs
+
+## Usage
+
+### Service Launch
+
+The JaxBucket service provides an HTTP API and background sync manager.
+
+#### Initialize Configuration
+
+```bash
+# Create config directory and generate identity
+jax init
+```
+
+This creates `~/.config/jax/` with:
+- `config.toml`: Service configuration
+- `secret.pem`: Ed25519 identity keypair
+- `jax.db`: SQLite database for bucket metadata
+
+#### Start Service
+
+```bash
+# Start service (default: http://localhost:8080)
+jax service
+
+# Custom port
+jax service
+
+# Custom config path
+jax service --config /path/to/config.toml
+```
+
+The service runs:
+- **HTTP Server**: REST API + Web UI
+- **Sync Manager**: Background task processing sync events
+- **Iroh Peer**: QUIC endpoint for P2P networking
+
+#### Service Configuration
+
+Edit `~/.config/jax/config.toml`:
+
+```toml
+[node]
+secret_key_path = "~/.config/jax/secret.pem"
+blobs_path = "~/.config/jax/blobs"
+bind_port = 0  # 0 = ephemeral port
+
+[database]
+path = "~/.config/jax/jax.db"
+
+[http_server]
+host = "127.0.0.1"
+port = 8080
+```
+
+### Web UI
+
+Navigate to `http://localhost:8080` to access the web interface:
+
+- **Dashboard** (`/`): Overview of buckets and sync status
+- **Bucket Explorer** (`/bucket/{id}`): Browse bucket contents
+- **File Viewer** (`/bucket/{id}/file/{path}`): View/download files
+- **Pins Explorer** (`/pins/{id}`): View pinned content
+- **Peers Explorer** (`/peers`): View connected peers
+
+The UI is built with server-side HTML rendering (no JavaScript framework).
+
+## Installation
+
+### From Source
+
+```bash
+# Clone repository
+git clone https://github.com/jax-ethdenver-2025/jax-bucket
+cd jax-bucket
+
+# Build all crates
+cargo build --release
+
+# Install binaries
+cargo install --path rust/crates/app
+```
+
+Binaries will be installed to `~/.cargo/bin/jax`.
+
+### Requirements
+
+- **Rust**: 1.75+ (2021 edition)
+- **System Libraries**: OpenSSL, libsqlite3
+- **OS**: Linux, macOS, Windows (WSL2 recommended)
+
+## Project Structure
+
+```text
+jax-bucket/
+├── rust/
+│   └── crates/
+│       ├── common/          # Core data structures and crypto
+│       │   ├── bucket/      # Manifest, Node, Mount, Pins
+│       │   ├── crypto/      # Keys, Secrets, Shares
+│       │   ├── linked_data/ # Link, CID, DAG-CBOR
+│       │   └── peer/        # Peer, BlobsStore, JAX Protocol
+│       ├── service/         # HTTP server and sync manager
+│       │   ├── database/    # SQLite models
+│       │   ├── http_server/ # API and web UI
+│       │   ├── mount_ops/   # Bucket operations
+│       │   └── sync_manager # P2P sync logic
+│       └── app/             # CLI binary
+│           └── ops/         # CLI commands
+├── README.md
+└── Cargo.toml
+```
+
+### Key Files
+
+- **Manifest**: `rust/crates/common/src/bucket/manifest.rs`
+- **Node**: `rust/crates/common/src/bucket/node.rs`
+- **Mount**: `rust/crates/common/src/bucket/mount.rs`
+- **Crypto**: `rust/crates/common/src/crypto/`
+- **Peer**: `rust/crates/common/src/peer/mod.rs`
+- **JAX Protocol**: `rust/crates/common/src/peer/jax_protocol/`
+- **Sync Manager**: `rust/crates/service/src/sync_manager/mod.rs`
+- **CLI**: `rust/crates/app/src/ops/`
+
+## Development
+
+### Running Tests
+
+```bash
+# Run all tests
+cargo test
+
+# Run tests for a specific crate
+cargo test -p common
+cargo test -p service
+
+# Run with logging
+RUST_LOG=debug cargo test
+```
+
+### Running the Service Locally
+
+```bash
+# Terminal 1: Run service
+RUST_LOG=info cargo run --bin jax -- service start
+
+# Terminal 2: Use CLI
+cargo run --bin jax -- bucket create test-bucket
+cargo run --bin jax -- bucket list
+```
+
+### Code Organization
+
+- **`common`**: Platform-agnostic core (can be used in WASM)
+- **`service`**: Server-side logic (HTTP, database, sync)
+- **`app`**: CLI binary
+
+## Security Considerations
+
+### Threat Model
+
+JaxBucket protects against:
+
+- ✅ **Untrusted Storage**: Blobs are encrypted, storage provider sees only hashes
+- ✅ **Passive Network Observers**: All peer connections use QUIC + TLS
+- ✅ **Unauthorized Peers**: Only peers with valid `BucketShare` can decrypt content
+- ✅ **Tampered Data**: AEAD and content addressing detect modifications
+
+JaxBucket does NOT protect against:
+
+- ❌ **Compromised Peer**: If an attacker gains access to your secret key or config
+- ❌ **Malicious Authorized Peer**: Peers with valid shares can leak data
+- ❌ **Metadata Leakage**: Bucket structure (file count, sizes) visible to storage provider
+- ❌ **Traffic Analysis**: Connection patterns may reveal peer relationships
+
+### Best Practices
+
+1. **Protect Secret Keys**: Store `secret.pem` securely, use file permissions
+2. **Verify Peer Identity**: Check public key fingerprints before sharing buckets
+3. **Regular Key Rotation**: Periodically rotate bucket secrets
+4. **Audit Shares**: Review who has access to your buckets
+5. **Monitor Sync Status**: Check for unexpected updates
+
+## Roadmap
+
+- [ ] **Conflict Resolution**: Handle concurrent updates from multiple peers
+- [ ] **Garbage Collection**: Remove unpinned blobs to free space
+- [ ] **Streaming Encryption**: Efficient handling of large files
+- [ ] **Access Revocation**: Remove peer access and re-encrypt
+- [ ] **Mobile Support**: iOS and Android apps
+- [ ] **WASM Support**: Run in web browsers
+- [ ] **Selective Sync**: Only sync specific subdirectories
+- [ ] **Compression**: Compress before encryption
+
+## Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Ensure `cargo test` passes
+5. Submit a pull request
+
+## Acknowledgments
+
+Built with:
+- **[Iroh](https://iroh.computer/)**: P2P networking and content storage
+- **[Rust](https://www.rust-lang.org/)**: Systems programming language
+- **[DAG-CBOR](https://ipld.io/)**: Merkle DAG serialization
+
+## Contact
+
+- **Issues**: https://github.com/jax-ethdenver-2025/jax-bucket/issues
+- **Discussions**: https://github.com/jax-ethdenver-2025/jax-bucket/discussions
