@@ -177,10 +177,6 @@ mod tests {
 
         // Try to encode/decode just the Share
         let encoded = DagCborCodec::encode_to_vec(&share).unwrap();
-        println!(
-            "Share encoded bytes: {:?}",
-            &encoded[..encoded.len().min(32)]
-        );
         let decoded: Share = DagCborCodec::decode_from_slice(&encoded).unwrap();
 
         assert_eq!(share, decoded);
@@ -199,10 +195,6 @@ mod tests {
 
         // Try to encode/decode just the Principal
         let encoded = DagCborCodec::encode_to_vec(&principal).unwrap();
-        println!(
-            "Principal encoded bytes: {:?}",
-            &encoded[..encoded.len().min(32)]
-        );
         let decoded: Principal = DagCborCodec::decode_from_slice(&encoded).unwrap();
 
         assert_eq!(principal, decoded);

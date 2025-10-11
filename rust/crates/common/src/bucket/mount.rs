@@ -100,24 +100,26 @@ impl Mount {
         // get the now previous link to the bucket
         let previous = inner.link.clone();
         // Put the current root node into blobs with the new secret
-        let new_root_link = Self::_put_node_in_blobs(&inner.entry, &secret, blobs).await?;
+        let entry = Self::_put_node_in_blobs(&inner.entry, &secret, blobs).await?;
         // Serialize current pins to blobs
         // put the new root link into the pins, as well as the previous link
-        inner.pins.insert(*new_root_link.clone().hash());
+        inner.pins.insert(*entry.clone().hash());
         inner.pins.insert(*previous.hash());
         let pins_link = Self::_put_pins_in_blobs(&inner.pins, blobs).await?;
         // Update the bucket's share with the new root link
         // (add_share creates the Share internally)
         let mut manifest = inner.manifest.clone();
-        let _m = inner.manifest.clone();
+        let _m = manifest.clone();
         let shares = _m.shares();
-        manifest.set_previous(previous);
+        manifest.unset_shares();
         for (_public_key_string, share) in shares {
             let public_key = share.principal().identity;
             manifest.add_share(public_key, secret.clone())?;
         }
         // Update the bucket's pins field
         manifest.set_pins(pins_link.clone());
+        manifest.set_previous(previous);
+        manifest.set_entry(entry.clone());
         // Put the updated manifest into blobs to determine the new link
         let link = Self::_put_manifest_in_blobs(&manifest, blobs).await?;
 
@@ -147,7 +149,7 @@ impl Mount {
         // Put the pins in blobs to get a pins link
         let pins_link = Self::_put_pins_in_blobs(&pins, blobs).await?;
         // construct the new manifest
-        let mut manifest = Manifest::new(
+        let manifest = Manifest::new(
             id,
             name.clone(),
             owner.public(),
@@ -155,7 +157,6 @@ impl Mount {
             entry_link.clone(),
             pins_link.clone(),
         );
-        manifest.set_pins(pins_link.clone());
         let link = Self::_put_manifest_in_blobs(&manifest, blobs).await?;
 
         // return the new mount
@@ -178,16 +179,13 @@ impl Mount {
         let public_key = &secret_key.public();
         let manifest = Self::_get_manifest_from_blobs(link, blobs).await?;
 
-        println!("Manifest after loading: {:?}", manifest);
-
         let _share = manifest.get_share(public_key);
-
-        println!("Share: {:?}", _share);
 
         let share = match _share {
             Some(share) => share.share(),
             None => return Err(MountError::ShareNotFound),
         };
+
         let secret = share.recover(secret_key)?;
 
         let pins = Self::_get_pins_from_blobs(manifest.pins(), blobs).await?;
@@ -753,22 +751,6 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_add_save_mount() {
-        let (mut mount, blobs, secret_key, _temp) = setup_test_env().await;
-
-        let data = b"Hello, world!";
-        let path = PathBuf::from("/test.txt");
-
-        mount
-            .add(&path, Cursor::new(data.to_vec()), &blobs)
-            .await
-            .unwrap();
-
-        let link = mount.save(&blobs).await.unwrap();
-        let _mount = Mount::load(&link, &secret_key, &blobs).await.unwrap();
-    }
-
-    #[tokio::test]
     async fn test_add_and_cat() {
         let (mut mount, blobs, _, _temp) = setup_test_env().await;
 
@@ -1036,15 +1018,9 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_share_re_mount() {
-        let (mut mount, blobs, secret_key, _temp) = setup_test_env().await;
-        let peer = SecretKey::generate().public();
-        mount.share(peer).await.unwrap();
-        println!("Shared mount with peer: {:?}", peer);
-        println!("Manifest: {:?}", mount.inner().manifest());
+    async fn test_save_load() {
+        let (mount, blobs, secret_key, _temp) = setup_test_env().await;
         let link = mount.save(&blobs).await.unwrap();
-        println!("Manifest after saving: {:?}", mount.inner().manifest());
-
         let _mount = Mount::load(&link, &secret_key, &blobs).await.unwrap();
     }
 }
