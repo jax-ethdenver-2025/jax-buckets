@@ -598,6 +598,8 @@ impl SyncManager {
         };
 
         let current_link: Link = bucket.link.into();
+        let manifest = self.get_bucket(&current_link).await?;
+        let our_previous = manifest.previous();
 
         // 2. Parse peer public key from peer_id (hex string)
         let peer_pub_key = match PublicKey::from_hex(&peer_id) {
@@ -651,6 +653,15 @@ impl SyncManager {
                     prev,
                     current_link
                 );
+                // if we have a previous link, and they match their previous link
+                if let Some(our_prev) = our_previous {
+                    if prev == *our_prev {
+                        tracing::warn!(
+                            "this probably means the peer sent a duplicate announcement"
+                        );
+                        return Ok(());
+                    }
+                }
                 bucket
                     .update_sync_status(
                         SyncStatus::Failed,

@@ -26,19 +26,20 @@ init_node() {
     local node_name=$2
     local api_port=$3
     local html_port=$4
+    local peer_port=$5
 
     if [ ! -d "$node_dir" ]; then
         echo -e "${YELLOW}Initializing $node_name (first run)...${NC}"
-        cargo run --bin jax -- --config-path "$node_dir" init --api-addr "0.0.0.0:$api_port" --html-addr "0.0.0.0:$html_port"
-        echo -e "${GREEN}$node_name initialized with API:$api_port HTML:$html_port${NC}"
+        cargo run --bin jax -- --config-path "$node_dir" init --api-addr "0.0.0.0:$api_port" --html-addr "0.0.0.0:$html_port" --peer-port "$peer_port"
+        echo -e "${GREEN}$node_name initialized with API:$api_port HTML:$html_port PEER:$peer_port${NC}"
     else
         echo -e "${GREEN}$node_name already initialized${NC}"
     fi
 }
 
 # Initialize both nodes
-init_node "./data/node1" "Node1" 3000 8080
-init_node "./data/node2" "Node2" 3001 8081
+init_node "./data/node1" "Node1" 3000 8080 9000
+init_node "./data/node2" "Node2" 3001 8081 9005
 
 # Check if tmux session already exists
 if tmux has-session -t jax-dev 2>/dev/null; then
@@ -89,8 +90,8 @@ echo "  1: db         - Database inspection window"
 echo "  2: api        - API testing window"
 echo ""
 echo "Ports:"
-echo "  Node1: API=3000, UI=8080"
-echo "  Node2: API=3001, UI=8081"
+echo "  Node1: API=3000, UI=8080, PEER=9000"
+echo "  Node2: API=3001, UI=8081, PEER=9001"
 echo ""
 echo -e "${BLUE}Attaching to session...${NC}"
 
