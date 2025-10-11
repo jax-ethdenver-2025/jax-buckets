@@ -7,7 +7,7 @@ use serde::Deserialize;
 use tracing::instrument;
 use uuid::Uuid;
 
-use common::bucket::BucketData;
+use common::bucket::Manifest;
 use common::linked_data::BlockEncoded;
 
 use crate::database::models::SyncStatus;
@@ -151,7 +151,7 @@ pub async fn handler(
     let blobs = state.node().blobs();
     let (previous_link, previous_link_full, previous_link_short, bucket_data_formatted) =
         match blobs.get(bucket.link.hash()).await {
-            Ok(data) => match BucketData::decode(&data) {
+            Ok(data) => match Manifest::decode(&data) {
                 Ok(bucket_data) => {
                     // Format bucket data as pretty JSON
                     let formatted = serde_json::to_string_pretty(&bucket_data)

@@ -44,8 +44,6 @@ pub struct PeerInfo {
     pub public_key: String,
     pub public_key_short: String,
     pub role: String,
-    pub root_link: String,
-    pub root_link_short: String,
     pub status: String,
     pub status_class: String,
 }
@@ -130,8 +128,6 @@ pub async fn handler(
             public_key: share.public_key.clone(),
             public_key_short: truncate_string(&share.public_key, 16),
             role: share.role,
-            root_link: share.root_link.clone(),
-            root_link_short: truncate_string(&share.root_link, 12),
             status: peer_status.0,
             status_class: peer_status.1,
         });

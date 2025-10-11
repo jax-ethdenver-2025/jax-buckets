@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::database::models::{Bucket, SyncStatus};
 use crate::mount_ops;
 use crate::ServiceState;
-use common::bucket::BucketData;
+use common::bucket::Manifest;
 use common::crypto::PublicKey;
 use common::linked_data::{BlockEncoded, Link};
 use common::peer::{
@@ -120,7 +120,7 @@ impl SyncManager {
     }
 
     /// Verify single-hop: peer's previous must equal our current link
-    fn verify_single_hop(current_link: &Link, peer_bucket_data: &BucketData) -> bool {
+    fn verify_single_hop(current_link: &Link, peer_bucket_data: &Manifest) -> bool {
         match peer_bucket_data.previous() {
             Some(prev) => prev == current_link,
             None => false, // No previous means it's initial version, not a single-hop update
@@ -128,9 +128,9 @@ impl SyncManager {
     }
 
     /// get a bucket locally
-    async fn get_bucket(&self, link: &Link) -> anyhow::Result<BucketData> {
+    async fn get_bucket(&self, link: &Link) -> anyhow::Result<Manifest> {
         let data = self.state.node().blobs().get(&link.hash()).await?;
-        let bucket_data = BucketData::decode(&data)?;
+        let bucket_data = Manifest::decode(&data)?;
 
         Ok(bucket_data)
     }
@@ -140,7 +140,7 @@ impl SyncManager {
         &self,
         link: &Link,
         peer_node_id: &PublicKey,
-    ) -> anyhow::Result<BucketData> {
+    ) -> anyhow::Result<Manifest> {
         let blobs = self.state.node().blobs();
         let endpoint = self.state.node().endpoint();
         let hash = *link.hash();
@@ -151,7 +151,7 @@ impl SyncManager {
 
         // Now get it from local store
         let data = blobs.get(&hash).await?;
-        let bucket_data = BucketData::decode(&data)?;
+        let bucket_data = Manifest::decode(&data)?;
 
         Ok(bucket_data)
     }
@@ -355,55 +355,49 @@ impl SyncManager {
         }
 
         // 8. Download the pinset if it exists
-        if let Some(pins_link) = bucket_data.pins() {
-            tracing::info!(
-                "Downloading pinset for bucket {} from peer {:?}",
-                bucket_id,
-                peer_addr
-            );
-            let blobs = self.state.node().blobs();
-            let pins_hash = *pins_link.hash();
-            let peer_ids = vec![peer_pub_key.into()];
+        let pins_link = bucket_data.pins();
+        tracing::info!(
+            "Downloading pinset for bucket {} from peer {:?}",
+            bucket_id,
+            peer_addr
+        );
+        let blobs = self.state.node().blobs();
+        let pins_hash = *pins_link.hash();
+        let peer_ids = vec![peer_pub_key.into()];
 
-            match blobs
-                .download_hash_list(pins_hash, peer_ids.clone(), &endpoint)
-                .await
-            {
-                Ok(()) => {
-                    tracing::info!(
-                        "Successfully downloaded pinset for bucket {} from pull sync",
-                        bucket_id
-                    );
+        match blobs
+            .download_hash_list(pins_hash, peer_ids.clone(), &endpoint)
+            .await
+        {
+            Ok(()) => {
+                tracing::info!(
+                    "Successfully downloaded pinset for bucket {} from pull sync",
+                    bucket_id
+                );
 
-                    // Verify the pinset was downloaded
-                    match blobs.stat(&pins_hash).await {
-                        Ok(true) => {
-                            tracing::debug!("Verified pinset hash {} exists locally", pins_hash)
-                        }
-                        Ok(false) => tracing::error!(
-                            "Pinset hash {} NOT found locally after download!",
-                            pins_hash
-                        ),
-                        Err(e) => {
-                            tracing::error!("Error checking pinset hash {}: {}", pins_hash, e)
-                        }
+                // Verify the pinset was downloaded
+                match blobs.stat(&pins_hash).await {
+                    Ok(true) => {
+                        tracing::debug!("Verified pinset hash {} exists locally", pins_hash)
+                    }
+                    Ok(false) => tracing::error!(
+                        "Pinset hash {} NOT found locally after download!",
+                        pins_hash
+                    ),
+                    Err(e) => {
+                        tracing::error!("Error checking pinset hash {}: {}", pins_hash, e)
                     }
                 }
-                Err(e) => {
-                    tracing::error!(
-                        "Failed to download pinset for bucket {} from peer {:?}: {}",
-                        bucket_id,
-                        peer_addr,
-                        e
-                    );
-                    // Don't fail the whole operation
-                }
             }
-        } else {
-            tracing::warn!(
-                "BucketData for bucket {} has NO pinset link - bucket will be empty!",
-                bucket_id
-            );
+            Err(e) => {
+                tracing::error!(
+                    "Failed to download pinset for bucket {} from peer {:?}: {}",
+                    bucket_id,
+                    peer_addr,
+                    e
+                );
+                // Don't fail the whole operation
+            }
         }
 
         // 9. Update bucket with new link and mark as synced
@@ -548,62 +542,50 @@ impl SyncManager {
                 .await?;
 
                 // Download the pinset if it exists
-                if let Some(pins_link) = bucket_data.pins() {
-                    tracing::debug!("BucketData has pinset link: {:?}", pins_link);
-                    tracing::info!(
-                        "Downloading pinset for bucket {} from peer {}",
-                        bucket_id,
-                        peer_id
-                    );
-                    let blobs = self.state.node().blobs();
-                    let endpoint = self.state.node().endpoint();
-                    let pins_hash = *pins_link.hash();
-                    let peer_ids = vec![peer_pub_key.into()];
+                let pins_link = bucket_data.pins();
+                tracing::debug!("BucketData has pinset link: {:?}", pins_link);
+                tracing::info!(
+                    "Downloading pinset for bucket {} from peer {}",
+                    bucket_id,
+                    peer_id
+                );
+                let blobs = self.state.node().blobs();
+                let endpoint = self.state.node().endpoint();
+                let pins_hash = *pins_link.hash();
+                let peer_ids = vec![peer_pub_key.into()];
 
-                    tracing::debug!("Pinset hash: {:?}, peer_ids: {:?}", pins_hash, peer_ids);
+                tracing::debug!("Pinset hash: {:?}, peer_ids: {:?}", pins_hash, peer_ids);
 
-                    match blobs
-                        .download_hash_list(pins_hash, peer_ids.clone(), endpoint)
-                        .await
-                    {
-                        Ok(()) => {
-                            tracing::info!(
-                                "Successfully downloaded pinset for bucket {}",
-                                bucket_id
-                            );
+                match blobs
+                    .download_hash_list(pins_hash, peer_ids.clone(), endpoint)
+                    .await
+                {
+                    Ok(()) => {
+                        tracing::info!("Successfully downloaded pinset for bucket {}", bucket_id);
 
-                            // Verify the pinset was actually downloaded
-                            match blobs.stat(&pins_hash).await {
-                                Ok(true) => tracing::debug!(
-                                    "Verified pinset hash {} exists locally",
-                                    pins_hash
-                                ),
-                                Ok(false) => tracing::error!(
-                                    "Pinset hash {} NOT found locally after download!",
-                                    pins_hash
-                                ),
-                                Err(e) => tracing::error!(
-                                    "Error checking pinset hash {}: {}",
-                                    pins_hash,
-                                    e
-                                ),
+                        // Verify the pinset was actually downloaded
+                        match blobs.stat(&pins_hash).await {
+                            Ok(true) => {
+                                tracing::debug!("Verified pinset hash {} exists locally", pins_hash)
+                            }
+                            Ok(false) => tracing::error!(
+                                "Pinset hash {} NOT found locally after download!",
+                                pins_hash
+                            ),
+                            Err(e) => {
+                                tracing::error!("Error checking pinset hash {}: {}", pins_hash, e)
                             }
                         }
-                        Err(e) => {
-                            tracing::error!(
-                                "Failed to download pinset for bucket {} from peer {}: {}",
-                                bucket_id,
-                                peer_id,
-                                e
-                            );
-                            // Don't fail the whole operation, bucket is still created
-                        }
                     }
-                } else {
-                    tracing::warn!(
-                        "BucketData for bucket {} has NO pinset link - bucket will be empty!",
-                        bucket_id
-                    );
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to download pinset for bucket {} from peer {}: {}",
+                            bucket_id,
+                            peer_id,
+                            e
+                        );
+                        // Don't fail the whole operation, bucket is still created
+                    }
                 }
 
                 tracing::info!(
@@ -735,59 +717,53 @@ impl SyncManager {
         );
 
         // Download the pinset if it exists
-        if let Some(pins_link) = bucket_data.pins() {
-            tracing::debug!("BucketData has pinset link: {:?}", pins_link);
-            tracing::info!(
-                "Downloading pinset for bucket {} update from peer {}",
-                bucket_id,
-                peer_id
-            );
-            let blobs = self.state.node().blobs();
-            let endpoint = self.state.node().endpoint();
-            let pins_hash = *pins_link.hash();
-            let peer_ids = vec![peer_pub_key.into()];
+        let pins_link = bucket_data.pins();
+        tracing::debug!("BucketData has pinset link: {:?}", pins_link);
+        tracing::info!(
+            "Downloading pinset for bucket {} update from peer {}",
+            bucket_id,
+            peer_id
+        );
+        let blobs = self.state.node().blobs();
+        let endpoint = self.state.node().endpoint();
+        let pins_hash = *pins_link.hash();
+        let peer_ids = vec![peer_pub_key.into()];
 
-            tracing::debug!("Pinset hash: {:?}, peer_ids: {:?}", pins_hash, peer_ids);
+        tracing::debug!("Pinset hash: {:?}, peer_ids: {:?}", pins_hash, peer_ids);
 
-            match blobs
-                .download_hash_list(pins_hash, peer_ids.clone(), endpoint)
-                .await
-            {
-                Ok(()) => {
-                    tracing::info!(
-                        "Successfully downloaded pinset for bucket {} update",
-                        bucket_id
-                    );
+        match blobs
+            .download_hash_list(pins_hash, peer_ids.clone(), endpoint)
+            .await
+        {
+            Ok(()) => {
+                tracing::info!(
+                    "Successfully downloaded pinset for bucket {} update",
+                    bucket_id
+                );
 
-                    // Verify the pinset was actually downloaded
-                    match blobs.stat(&pins_hash).await {
-                        Ok(true) => {
-                            tracing::debug!("Verified pinset hash {} exists locally", pins_hash)
-                        }
-                        Ok(false) => tracing::error!(
-                            "Pinset hash {} NOT found locally after download!",
-                            pins_hash
-                        ),
-                        Err(e) => {
-                            tracing::error!("Error checking pinset hash {}: {}", pins_hash, e)
-                        }
+                // Verify the pinset was actually downloaded
+                match blobs.stat(&pins_hash).await {
+                    Ok(true) => {
+                        tracing::debug!("Verified pinset hash {} exists locally", pins_hash)
+                    }
+                    Ok(false) => tracing::error!(
+                        "Pinset hash {} NOT found locally after download!",
+                        pins_hash
+                    ),
+                    Err(e) => {
+                        tracing::error!("Error checking pinset hash {}: {}", pins_hash, e)
                     }
                 }
-                Err(e) => {
-                    tracing::error!(
-                        "Failed to download pinset for bucket {} update from peer {}: {}",
-                        bucket_id,
-                        peer_id,
-                        e
-                    );
-                    // Don't fail the whole operation, we'll mark it as partially synced
-                }
             }
-        } else {
-            tracing::warn!(
-                "BucketData for bucket {} update has NO pinset link - bucket will be empty!",
-                bucket_id
-            );
+            Err(e) => {
+                tracing::error!(
+                    "Failed to download pinset for bucket {} update from peer {}: {}",
+                    bucket_id,
+                    peer_id,
+                    e
+                );
+                // Don't fail the whole operation, we'll mark it as partially synced
+            }
         }
 
         bucket

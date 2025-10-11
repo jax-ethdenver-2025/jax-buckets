@@ -6,11 +6,12 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use uuid::Uuid;
 
-use crate::bucket::{BucketData, Node, NodeError, NodeLink};
 use crate::crypto::{PublicKey, Secret, SecretError, SecretKey, Share};
 use crate::linked_data::{BlockEncoded, CodecError, Link};
 use crate::peer::{BlobsStore, BlobsStoreError};
 
+use super::manifest::Manifest;
+use super::node::{Node, NodeError, NodeLink};
 use super::pins::Pins;
 
 pub fn clean_path(path: &Path) -> PathBuf {
@@ -25,26 +26,25 @@ pub fn clean_path(path: &Path) -> PathBuf {
 
 #[derive(Clone)]
 pub struct MountInner {
-    pub bucket_link: Link,
-    pub bucket_data: BucketData,
-    pub root_link: Link,
-    pub root_node: Node,
+    // link to the manifest
+    pub link: Link,
+    // the loaded manifest
+    pub manifest: Manifest,
+    // the loaded, decrypted entry node
+    pub entry: Node,
+    // the loaded pins
     pub pins: Pins,
-    pub secret_key: SecretKey,
 }
 
 impl MountInner {
-    pub fn bucket_link(&self) -> &Link {
-        &self.bucket_link
+    pub fn link(&self) -> &Link {
+        &self.link
     }
-    pub fn root_link(&self) -> &Link {
-        &self.root_link
+    pub fn entry(&self) -> &Node {
+        &self.entry
     }
-    pub fn root_node(&self) -> &Node {
-        &self.root_node
-    }
-    pub fn bucket_data(&self) -> &BucketData {
-        &self.bucket_data
+    pub fn manifest(&self) -> &Manifest {
+        &self.manifest
     }
     pub fn pins(&self) -> &Pins {
         &self.pins
@@ -52,10 +52,10 @@ impl MountInner {
 }
 
 #[derive(Clone)]
-pub struct Bucket(Arc<Mutex<MountInner>>);
+pub struct Mount(Arc<Mutex<MountInner>>, BlobsStore);
 
 #[derive(Debug, thiserror::Error)]
-pub enum BucketError {
+pub enum MountError {
     #[error("default error: {0}")]
     Default(#[from] anyhow::Error),
     #[error("link not found")]
@@ -78,75 +78,55 @@ pub enum BucketError {
     ShareNotFound,
 }
 
-impl Bucket {
+impl Mount {
     pub fn inner(&self) -> MountInner {
         self.0.lock().clone()
     }
 
-    pub fn bucket_link(&self) -> Link {
-        let inner = self.0.lock();
-
-        inner.bucket_link.clone()
+    pub fn blobs(&self) -> BlobsStore {
+        self.1.clone()
     }
 
-    pub fn root_link(&self) -> Link {
+    pub fn link(&self) -> Link {
         let inner = self.0.lock();
-
-        inner.root_link.clone()
+        inner.link.clone()
     }
 
-    /// Save the current mount state by updating the bucket in blobs
-    /// Returns the new bucket link that should be stored in the database
-    pub async fn save(&self, blobs: &BlobsStore) -> Result<Link, BucketError> {
+    /// Save the current mount state to the blobs store
+    pub async fn save(&self, blobs: &BlobsStore) -> Result<Link, MountError> {
         let mut inner = self.0.lock();
-
         // Create a new secret for the updated root
         let secret = Secret::generate();
-
         // get the now previous link to the bucket
-        let previous = inner.bucket_link.clone();
-
+        let previous = inner.link.clone();
         // Put the current root node into blobs with the new secret
-        let new_root_link = Self::_put_node_in_blobs(&inner.root_node, &secret, blobs).await?;
-
+        let entry = Self::_put_node_in_blobs(&inner.entry, &secret, blobs).await?;
         // Serialize current pins to blobs
-        // put the new root link into the pins
-        inner.pins.insert(*new_root_link.clone().hash());
+        // put the new root link into the pins, as well as the previous link
+        inner.pins.insert(*entry.clone().hash());
+        inner.pins.insert(*previous.hash());
         let pins_link = Self::_put_pins_in_blobs(&inner.pins, blobs).await?;
-
         // Update the bucket's share with the new root link
         // (add_share creates the Share internally)
-        let mut updated_bucket = inner.bucket_data.clone();
-        let _ub = updated_bucket.clone();
-        let shares = _ub.shares();
-
-        // set the previous
-        updated_bucket.set_previous(previous);
-        // set the shares by iterating through the available shares
-        // unset the shares
-        updated_bucket.unset_shares();
+        let mut manifest = inner.manifest.clone();
+        let _m = manifest.clone();
+        let shares = _m.shares();
+        manifest.unset_shares();
         for (_public_key_string, share) in shares {
             let public_key = share.principal().identity;
-            updated_bucket.add_share(public_key, new_root_link.clone(), secret.clone())?;
+            manifest.add_share(public_key, secret.clone())?;
         }
-
         // Update the bucket's pins field
-        updated_bucket.set_pins(pins_link.clone());
+        manifest.set_pins(pins_link.clone());
+        manifest.set_previous(previous);
+        manifest.set_entry(entry.clone());
+        // Put the updated manifest into blobs to determine the new link
+        let link = Self::_put_manifest_in_blobs(&manifest, blobs).await?;
 
-        // Put the updated bucket into blobs
-        let new_bucket_link = Self::_put_bucket_in_blobs(&updated_bucket, blobs).await?;
+        // update the internal state
+        inner.manifest = manifest;
 
-        // Track the new hashes created during save in the in-memory pins
-        // These will be included in the next save operation
-        inner.pins.insert(*new_root_link.hash());
-        inner.pins.insert(*pins_link.hash());
-        inner.pins.insert(*new_bucket_link.hash());
-
-        // Update our internal state
-        inner.root_link = new_root_link;
-        inner.bucket_data = updated_bucket;
-
-        Ok(new_bucket_link)
+        Ok(link)
     }
 
     pub async fn init(
@@ -154,188 +134,80 @@ impl Bucket {
         name: String,
         owner: &SecretKey,
         blobs: &BlobsStore,
-    ) -> Result<Self, BucketError> {
-        tracing::debug!(
-            "Bucket::init: Creating new bucket '{}' for owner {}",
-            name,
-            owner.public().to_hex()
-        );
-
+    ) -> Result<Self, MountError> {
         // create a new root node for the bucket
-        let root_node = Node::default();
+        let entry = Node::default();
         // create a new secret for the owner
         let secret = Secret::generate();
         // put the node in the blobs store for the secret
-        let root_link = Self::_put_node_in_blobs(&root_node, &secret, blobs).await?;
-        tracing::debug!(
-            "Bucket::init: Created root node with hash {}",
-            root_link.hash()
-        );
-
+        let entry_link = Self::_put_node_in_blobs(&entry, &secret, blobs).await?;
         // share the secret with the owner
         let share = Share::new(&secret, &owner.public())?;
-
         // Initialize pins with root node hash
         let mut pins = Pins::new();
-        pins.insert(*root_link.hash());
-        tracing::debug!(
-            "Bucket::init: Created pins with root node hash: {}",
-            root_link.hash()
-        );
-        tracing::debug!(
-            "Bucket::init: Pins before storing: {:?}",
-            pins.iter().collect::<Vec<_>>()
-        );
-
+        pins.insert(*entry_link.hash());
         // Put the pins in blobs to get a pins link
         let pins_link = Self::_put_pins_in_blobs(&pins, blobs).await?;
-        tracing::debug!("Bucket::init: Stored pinset with hash {}", pins_link.hash());
-
-        // Add pins link hash to the pins (will be saved on next save)
-        pins.insert(*pins_link.hash());
-
-        // construct the new bucket with the pins link
-        let mut bucket_data =
-            BucketData::init(id, name.clone(), owner.public(), share, root_link.clone());
-        bucket_data.set_pins(pins_link.clone());
-        tracing::debug!("Bucket::init: Created BucketData with pinset link");
-
-        // put the bucket in the blobs store
-        let bucket_link = Self::_put_bucket_in_blobs(&bucket_data, blobs).await?;
-        tracing::info!(
-            "Bucket::init: Created bucket '{}' with hash {} and pinset hash {}",
-            name,
-            bucket_link.hash(),
-            pins_link.hash()
+        // construct the new manifest
+        let manifest = Manifest::new(
+            id,
+            name.clone(),
+            owner.public(),
+            share,
+            entry_link.clone(),
+            pins_link.clone(),
         );
-
-        // Add bucket hash to pins (will be saved on next save)
-        pins.insert(*bucket_link.hash());
+        let link = Self::_put_manifest_in_blobs(&manifest, blobs).await?;
 
         // return the new mount
-        Ok(Bucket(Arc::new(Mutex::new(MountInner {
-            bucket_link,
-            root_link,
-            bucket_data,
-            root_node,
-            pins,
-            secret_key: owner.clone(),
-        }))))
+        Ok(Mount(
+            Arc::new(Mutex::new(MountInner {
+                link,
+                manifest,
+                entry,
+                pins,
+            })),
+            blobs.clone(),
+        ))
     }
 
     pub async fn load(
         link: &Link,
         secret_key: &SecretKey,
         blobs: &BlobsStore,
-    ) -> Result<Self, BucketError> {
+    ) -> Result<Self, MountError> {
         let public_key = &secret_key.public();
+        let manifest = Self::_get_manifest_from_blobs(link, blobs).await?;
 
-        tracing::debug!("Bucket::load: Loading bucket from link {}", link.hash());
-        let bucket = Self::_get_bucket_from_blobs(link, blobs).await?;
+        let _share = manifest.get_share(public_key);
 
-        let _bucket_share = bucket.get_share(public_key);
+        let share = match _share {
+            Some(share) => share.share(),
+            None => return Err(MountError::ShareNotFound),
+        };
 
-        if _bucket_share.is_none() {
-            return Err(BucketError::ShareNotFound);
-        }
-
-        let bucket_share = _bucket_share.unwrap();
-        let share = bucket_share.share();
         let secret = share.recover(secret_key)?;
 
-        let root_link = bucket_share.root().clone();
-        tracing::info!(
-            "Bucket::load: Root link from bucket share: {}",
-            root_link.hash()
-        );
+        let pins = Self::_get_pins_from_blobs(manifest.pins(), blobs).await?;
+        let entry =
+            Self::_get_node_from_blobs(&NodeLink::Dir(manifest.entry().clone(), secret), blobs)
+                .await?;
 
-        if root_link == Link::default() {
-            // TODO (amiller68): be better
-            panic!("default link found")
-        } else {
-            // Load or initialize pins FIRST to see what we have
-            let pins = if let Some(pins_link) = bucket.pins() {
-                tracing::info!("Bucket::load: Loading pins from link {}", pins_link.hash());
-                // Load existing pins from blobs
-                match Self::_get_pins_from_blobs(pins_link, blobs).await {
-                    Ok(pins) => {
-                        tracing::info!("Bucket::load: Loaded {} pins from blobs", pins.len());
-                        tracing::info!(
-                            "Bucket::load: Pins content: {:?}",
-                            pins.iter().collect::<Vec<_>>()
-                        );
-
-                        // Check if root link is in pins
-                        if pins.contains(root_link.hash()) {
-                            tracing::info!(
-                                "Bucket::load: Root link hash {} IS in pinset",
-                                root_link.hash()
-                            );
-                        } else {
-                            tracing::warn!(
-                                "Bucket::load: Root link hash {} NOT in pinset!",
-                                root_link.hash()
-                            );
-                        }
-
-                        pins
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "Bucket::load: Failed to load pins: {}, starting with empty set",
-                            e
-                        );
-                        // If pins blob is missing, start with empty set
-                        Pins::new()
-                    }
-                }
-            } else {
-                tracing::debug!("Bucket::load: No pins link in bucket, starting with empty set");
-                // Legacy bucket without pins, start with empty set
-                Pins::new()
-            };
-
-            tracing::info!(
-                "Bucket::load: Loading root node from hash {}",
-                root_link.hash()
-            );
-            let root_node =
-                Self::_get_node_from_blobs(&NodeLink::Dir(root_link.clone(), secret), blobs)
-                    .await?;
-            tracing::debug!("Bucket::load: Successfully loaded root node");
-
-            Ok(Bucket(Arc::new(Mutex::new(MountInner {
-                bucket_link: link.clone(),
-                root_link: root_link.clone(),
-                bucket_data: bucket,
-                root_node,
+        Ok(Mount(
+            Arc::new(Mutex::new(MountInner {
+                link: link.clone(),
+                manifest,
+                entry,
                 pins,
-                secret_key: secret_key.clone(),
-            }))))
-        }
+            })),
+            blobs.clone(),
+        ))
     }
 
     #[allow(clippy::await_holding_lock)]
-    pub async fn share(
-        &mut self,
-        peer_public_key: PublicKey,
-        _blobs: &BlobsStore,
-    ) -> Result<(), BucketError> {
+    pub async fn share(&mut self, peer: PublicKey) -> Result<(), MountError> {
         let mut inner = self.0.lock();
-        // recover our secret
-        let _share = inner.bucket_data().get_share(&inner.secret_key.public());
-        let share = match _share {
-            Some(share) => share,
-            None => panic!("Missing share"),
-        };
-        let secret = share.share().recover(&inner.secret_key)?;
-        // Clone bucket_data and add the new share
-        let mut updated_bucket = inner.bucket_data.clone();
-        updated_bucket.add_share(peer_public_key, inner.root_link.clone(), secret)?;
-
-        // Update internal state
-        inner.bucket_data = updated_bucket;
-
+        inner.manifest.add_share(peer, Secret::default())?;
         Ok(())
     }
 
@@ -345,7 +217,7 @@ impl Bucket {
         path: &Path,
         data: R,
         blobs: &BlobsStore,
-    ) -> Result<(), BucketError>
+    ) -> Result<(), MountError>
     where
         R: Read + Send + Sync + 'static + Unpin,
     {
@@ -378,7 +250,7 @@ impl Bucket {
         let node_link = NodeLink::new_data_from_path(link.clone(), secret, path);
 
         let mut inner = self.0.lock();
-        let root_node = inner.root_node.clone();
+        let root_node = inner.entry.clone();
         let (updated_link, node_hashes) =
             Self::_set_node_link_at_path(root_node, node_link, path, blobs).await?;
 
@@ -387,38 +259,37 @@ impl Bucket {
         inner.pins.extend(node_hashes);
 
         if let NodeLink::Dir(new_root_link, new_secret) = updated_link {
-            inner.root_node = Self::_get_node_from_blobs(
+            inner.entry = Self::_get_node_from_blobs(
                 &NodeLink::Dir(new_root_link.clone(), new_secret),
                 blobs,
             )
             .await?;
-            // inner.link = new_root_link;
         }
 
         Ok(())
     }
 
     #[allow(clippy::await_holding_lock)]
-    pub async fn rm(&mut self, path: &Path, blobs: &BlobsStore) -> Result<(), BucketError> {
+    pub async fn rm(&mut self, path: &Path, blobs: &BlobsStore) -> Result<(), MountError> {
         let path = clean_path(path);
         let parent_path = path
             .parent()
-            .ok_or_else(|| BucketError::Default(anyhow::anyhow!("Cannot remove root")))?;
+            .ok_or_else(|| MountError::Default(anyhow::anyhow!("Cannot remove root")))?;
 
         let inner = self.0.lock();
-        let root_node = inner.root_node.clone();
+        let entry = inner.entry.clone();
         drop(inner);
 
         let mut parent_node = if parent_path == Path::new("") {
-            root_node.clone()
+            entry.clone()
         } else {
-            Self::_get_node_at_path(&root_node, parent_path, blobs).await?
+            Self::_get_node_at_path(&entry, parent_path, blobs).await?
         };
 
         let file_name = path.file_name().unwrap().to_string_lossy().to_string();
 
         if parent_node.del(&file_name).is_none() {
-            return Err(BucketError::PathNotFound(path.to_path_buf()));
+            return Err(MountError::PathNotFound(path.to_path_buf()));
         }
 
         if parent_path == Path::new("") {
@@ -428,8 +299,7 @@ impl Bucket {
             let mut inner = self.0.lock();
             // Track the new root node hash
             inner.pins.insert(*link.hash());
-            inner.root_node = parent_node;
-            inner.root_link = link;
+            inner.entry = parent_node;
         } else {
             // Save the modified parent node to blobs
             let secret = Secret::generate();
@@ -439,25 +309,19 @@ impl Bucket {
             let mut inner = self.0.lock();
             // Convert parent_path back to absolute for _set_node_link_at_path
             let abs_parent_path = Path::new("/").join(parent_path);
-            let (updated_link, node_hashes) = Self::_set_node_link_at_path(
-                inner.root_node.clone(),
-                node_link,
-                &abs_parent_path,
-                blobs,
-            )
-            .await?;
+            let (updated_link, node_hashes) =
+                Self::_set_node_link_at_path(entry, node_link, &abs_parent_path, blobs).await?;
 
             // Track the parent node hash and all created node hashes
             inner.pins.insert(*parent_link.hash());
             inner.pins.extend(node_hashes);
 
             if let NodeLink::Dir(new_root_link, new_secret) = updated_link {
-                inner.root_node = Self::_get_node_from_blobs(
+                inner.entry = Self::_get_node_from_blobs(
                     &NodeLink::Dir(new_root_link.clone(), new_secret),
                     blobs,
                 )
                 .await?;
-                inner.root_link = new_root_link;
             }
         }
 
@@ -469,12 +333,12 @@ impl Bucket {
         &self,
         path: &Path,
         blobs: &BlobsStore,
-    ) -> Result<BTreeMap<PathBuf, NodeLink>, BucketError> {
+    ) -> Result<BTreeMap<PathBuf, NodeLink>, MountError> {
         let mut items = BTreeMap::new();
         let path = clean_path(path);
 
         let inner = self.0.lock();
-        let root_node = inner.root_node.clone();
+        let root_node = inner.entry.clone();
         drop(inner);
 
         let node = if path == Path::new("") {
@@ -482,8 +346,8 @@ impl Bucket {
         } else {
             match Self::_get_node_at_path(&root_node, &path, blobs).await {
                 Ok(node) => node,
-                Err(BucketError::LinkNotFound(_)) => {
-                    return Err(BucketError::PathNotNode(path.to_path_buf()))
+                Err(MountError::LinkNotFound(_)) => {
+                    return Err(MountError::PathNotNode(path.to_path_buf()))
                 }
                 Err(err) => return Err(err),
             }
@@ -502,7 +366,7 @@ impl Bucket {
         &self,
         path: &Path,
         blobs: &BlobsStore,
-    ) -> Result<BTreeMap<PathBuf, NodeLink>, BucketError> {
+    ) -> Result<BTreeMap<PathBuf, NodeLink>, MountError> {
         let base_path = clean_path(path);
         self._ls_deep(path, &base_path, blobs).await
     }
@@ -512,7 +376,7 @@ impl Bucket {
         path: &Path,
         base_path: &Path,
         blobs: &BlobsStore,
-    ) -> Result<BTreeMap<PathBuf, NodeLink>, BucketError> {
+    ) -> Result<BTreeMap<PathBuf, NodeLink>, MountError> {
         let mut all_items = BTreeMap::new();
 
         // get the initial items at the given path
@@ -546,11 +410,11 @@ impl Bucket {
     }
 
     #[allow(clippy::await_holding_lock)]
-    pub async fn cat(&self, path: &Path, blobs: &BlobsStore) -> Result<Vec<u8>, BucketError> {
+    pub async fn cat(&self, path: &Path, blobs: &BlobsStore) -> Result<Vec<u8>, MountError> {
         let path = clean_path(path);
 
         let inner = self.0.lock();
-        let root_node = inner.root_node.clone();
+        let root_node = inner.entry.clone();
         drop(inner);
 
         let (parent_path, file_name) = if let Some(parent) = path.parent() {
@@ -559,7 +423,7 @@ impl Bucket {
                 path.file_name().unwrap().to_string_lossy().to_string(),
             )
         } else {
-            return Err(BucketError::PathNotFound(path.to_path_buf()));
+            return Err(MountError::PathNotFound(path.to_path_buf()));
         };
 
         let parent_node = if parent_path == Path::new("") {
@@ -570,7 +434,7 @@ impl Bucket {
 
         let link = parent_node
             .get_link(&file_name)
-            .ok_or_else(|| BucketError::PathNotFound(path.to_path_buf()))?;
+            .ok_or_else(|| MountError::PathNotFound(path.to_path_buf()))?;
 
         match link {
             NodeLink::Data(link, secret, _) => {
@@ -578,17 +442,17 @@ impl Bucket {
                 let data = secret.decrypt(&encrypted_data)?;
                 Ok(data)
             }
-            NodeLink::Dir(_, _) => Err(BucketError::PathNotNode(path.to_path_buf())),
+            NodeLink::Dir(_, _) => Err(MountError::PathNotNode(path.to_path_buf())),
         }
     }
 
     /// Get the NodeLink for a file at a given path
     #[allow(clippy::await_holding_lock)]
-    pub async fn get(&self, path: &Path, blobs: &BlobsStore) -> Result<NodeLink, BucketError> {
+    pub async fn get(&self, path: &Path, blobs: &BlobsStore) -> Result<NodeLink, MountError> {
         let path = clean_path(path);
 
         let inner = self.0.lock();
-        let root_node = inner.root_node.clone();
+        let root_node = inner.entry.clone();
         drop(inner);
 
         let (parent_path, file_name) = if let Some(parent) = path.parent() {
@@ -597,7 +461,7 @@ impl Bucket {
                 path.file_name().unwrap().to_string_lossy().to_string(),
             )
         } else {
-            return Err(BucketError::PathNotFound(path.to_path_buf()));
+            return Err(MountError::PathNotFound(path.to_path_buf()));
         };
 
         let parent_node = if parent_path == Path::new("") {
@@ -609,14 +473,14 @@ impl Bucket {
         parent_node
             .get_link(&file_name)
             .cloned()
-            .ok_or_else(|| BucketError::PathNotFound(path.to_path_buf()))
+            .ok_or_else(|| MountError::PathNotFound(path.to_path_buf()))
     }
 
     async fn _get_node_at_path(
         node: &Node,
         path: &Path,
         blobs: &BlobsStore,
-    ) -> Result<Node, BucketError> {
+    ) -> Result<Node, MountError> {
         let mut current_node = node.clone();
         let mut consumed_path = PathBuf::from("/");
 
@@ -625,7 +489,7 @@ impl Bucket {
             let next = part.to_string_lossy().to_string();
             let next_link = current_node
                 .get_link(&next)
-                .ok_or(BucketError::PathNotFound(consumed_path.clone()))?;
+                .ok_or(MountError::PathNotFound(consumed_path.clone()))?;
             current_node = Self::_get_node_from_blobs(next_link, blobs).await?
         }
         Ok(current_node)
@@ -636,7 +500,7 @@ impl Bucket {
         node_link: NodeLink,
         path: &Path,
         blobs: &BlobsStore,
-    ) -> Result<(NodeLink, Vec<crate::linked_data::Hash>), BucketError> {
+    ) -> Result<(NodeLink, Vec<crate::linked_data::Hash>), MountError> {
         let path = clean_path(path);
         let mut visited_nodes = Vec::new();
         let mut name = path.file_name().unwrap().to_string_lossy().to_string();
@@ -656,7 +520,7 @@ impl Bucket {
                         node = Self::_get_node_from_blobs(next_link, blobs).await?
                     }
                     NodeLink::Data(..) => {
-                        return Err(BucketError::PathNotNode(consumed_path.clone()));
+                        return Err(MountError::PathNotNode(consumed_path.clone()));
                     }
                 }
                 visited_nodes.push((consumed_path.clone(), node.clone()));
@@ -686,10 +550,10 @@ impl Bucket {
         Ok((node_link, created_hashes))
     }
 
-    async fn _get_bucket_from_blobs(
+    async fn _get_manifest_from_blobs(
         link: &Link,
         blobs: &BlobsStore,
-    ) -> Result<BucketData, BucketError> {
+    ) -> Result<Manifest, MountError> {
         tracing::debug!(
             "_get_bucket_from_blobs: Checking for bucket data at link {:?}",
             link
@@ -706,7 +570,7 @@ impl Bucket {
             }
             Ok(false) => {
                 tracing::error!("_get_bucket_from_blobs: Bucket hash {} NOT FOUND in blobs - LinkNotFound error!", hash);
-                return Err(BucketError::LinkNotFound(link.clone()));
+                return Err(MountError::LinkNotFound(link.clone()));
             }
             Err(e) => {
                 tracing::error!(
@@ -725,7 +589,7 @@ impl Bucket {
             data.len()
         );
 
-        let bucket_data = BucketData::decode(&data)?;
+        let bucket_data = Manifest::decode(&data)?;
         tracing::debug!(
             "_get_bucket_from_blobs: Successfully decoded BucketData for bucket '{}'",
             bucket_data.name()
@@ -734,7 +598,7 @@ impl Bucket {
         Ok(bucket_data)
     }
 
-    async fn _get_pins_from_blobs(link: &Link, blobs: &BlobsStore) -> Result<Pins, BucketError> {
+    async fn _get_pins_from_blobs(link: &Link, blobs: &BlobsStore) -> Result<Pins, MountError> {
         tracing::debug!("_get_pins_from_blobs: Checking for pins at link {:?}", link);
         let hash = link.hash();
         tracing::debug!("_get_pins_from_blobs: Pins hash: {}", hash);
@@ -748,7 +612,7 @@ impl Bucket {
                     "_get_pins_from_blobs: Pins hash {} NOT FOUND in blobs - LinkNotFound error!",
                     hash
                 );
-                return Err(BucketError::LinkNotFound(link.clone()));
+                return Err(MountError::LinkNotFound(link.clone()));
             }
             Err(e) => {
                 tracing::error!(
@@ -774,7 +638,7 @@ impl Bucket {
     async fn _get_node_from_blobs(
         node_link: &NodeLink,
         blobs: &BlobsStore,
-    ) -> Result<Node, BucketError> {
+    ) -> Result<Node, MountError> {
         let link = node_link.link();
         let secret = node_link.secret();
         let hash = link.hash();
@@ -790,7 +654,7 @@ impl Bucket {
                     "_get_node_from_blobs: Node hash {} NOT FOUND in blobs - LinkNotFound error!",
                     hash
                 );
-                return Err(BucketError::LinkNotFound(link.clone()));
+                return Err(MountError::LinkNotFound(link.clone()));
             }
             Err(e) => {
                 tracing::error!(
@@ -826,7 +690,7 @@ impl Bucket {
         node: &Node,
         secret: &Secret,
         blobs: &BlobsStore,
-    ) -> Result<Link, BucketError> {
+    ) -> Result<Link, MountError> {
         let _data = node.encode()?;
         let data = secret.encrypt(&_data)?;
         let hash = blobs.put(data).await?;
@@ -840,10 +704,10 @@ impl Bucket {
         Ok(link)
     }
 
-    pub async fn _put_bucket_in_blobs(
-        bucket_data: &BucketData,
+    pub async fn _put_manifest_in_blobs(
+        bucket_data: &Manifest,
         blobs: &BlobsStore,
-    ) -> Result<Link, BucketError> {
+    ) -> Result<Link, MountError> {
         let data = bucket_data.encode()?;
         let hash = blobs.put(data).await?;
         // NOTE (amiller68): buckets are unencrypted, so they can inherit
@@ -852,7 +716,7 @@ impl Bucket {
         Ok(link)
     }
 
-    pub async fn _put_pins_in_blobs(pins: &Pins, blobs: &BlobsStore) -> Result<Link, BucketError> {
+    pub async fn _put_pins_in_blobs(pins: &Pins, blobs: &BlobsStore) -> Result<Link, MountError> {
         // Create a hash list blob from the pins (raw bytes: 32 bytes per hash, concatenated)
         let hash = blobs.create_hash_list(pins.iter().copied()).await?;
         // Pins are stored as raw blobs containing concatenated hashes
@@ -871,41 +735,15 @@ mod test {
     use std::io::Cursor;
     use tempfile::TempDir;
 
-    async fn setup_test_env() -> (Bucket, BlobsStore, crate::crypto::SecretKey, TempDir) {
+    async fn setup_test_env() -> (Mount, BlobsStore, crate::crypto::SecretKey, TempDir) {
         let temp_dir = TempDir::new().unwrap();
         let blob_path = temp_dir.path().join("blobs");
 
-        let secret_key = crate::crypto::SecretKey::generate();
+        let secret_key = SecretKey::generate();
         // Generate iroh secret key from random bytes
-        let mut iroh_key_bytes = [0u8; 32];
-        getrandom::getrandom(&mut iroh_key_bytes).expect("failed to generate random bytes");
         let blobs = BlobsStore::load(&blob_path).await.unwrap();
-        let bucket = BucketData::new("test-bucket".to_string(), secret_key.public());
 
-        let root_node = Node::default();
-        let root_secret = Secret::generate();
-
-        let root_data = root_node.encode().unwrap();
-        let encrypted_root = root_secret.encrypt(&root_data).unwrap();
-        let root_hash = blobs.put(encrypted_root).await.unwrap();
-        let root_link = Link::new(root_node.codec(), root_hash, iroh_blobs::BlobFormat::Raw);
-
-        let mut bucket_with_share = bucket.clone();
-        bucket_with_share
-            .add_share(secret_key.public(), root_link.clone(), root_secret.clone())
-            .unwrap();
-
-        let bucket_data = bucket_with_share.encode().unwrap();
-
-        let bucket_hash = blobs.put(bucket_data).await.unwrap();
-
-        let bucket_link = Link::new(
-            bucket_with_share.codec(),
-            bucket_hash,
-            iroh_blobs::BlobFormat::Raw,
-        );
-
-        let mount = Bucket::load(&bucket_link, &secret_key, &blobs)
+        let mount = Mount::init(Uuid::new_v4(), "test".to_string(), &secret_key, &blobs)
             .await
             .unwrap();
 
@@ -1177,5 +1015,12 @@ mod test {
 
         let result = mount.cat(&PathBuf::from("/dir"), &blobs).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_save_load() {
+        let (mount, blobs, secret_key, _temp) = setup_test_env().await;
+        let link = mount.save(&blobs).await.unwrap();
+        let _mount = Mount::load(&link, &secret_key, &blobs).await.unwrap();
     }
 }

@@ -41,7 +41,7 @@ pub async fn handler(
     let owner = state.node().secret();
     let blobs = state.node().blobs();
     let mount = Mount::init(id, req.name.clone(), owner, blobs).await?;
-    let link = mount.bucket_link();
+    let link = mount.link();
 
     // Create bucket in database
     let _bucket = BucketModel::create(id, req.name.clone(), link.clone(), state.database())

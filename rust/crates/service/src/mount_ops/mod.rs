@@ -1,3 +1,4 @@
+mod add_data;
 mod error;
 mod get_bucket_info;
 mod get_bucket_pins;
@@ -14,6 +15,7 @@ pub use error::MountOpsError;
 pub use types::{BucketInfo, FileInfo};
 
 // Re-export functions
+pub use add_data::add_data_to_bucket;
 pub use get_bucket_info::get_bucket_info;
 pub use get_bucket_pins::get_bucket_pins;
 pub use get_bucket_shares::get_bucket_shares;

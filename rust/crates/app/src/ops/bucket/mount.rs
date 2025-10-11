@@ -24,7 +24,7 @@ impl crate::op::Op for MountRequest {
             response.bucket_name,
             response.bucket_id,
             response.bucket_link.hash(),
-            response.root_link.hash()
+            response.bucket_link.hash()
         ))
     }
 }

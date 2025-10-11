@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, OnceLock};
 use uuid::Uuid;
 
-use common::bucket::BucketData;
+use common::bucket::Manifest;
 use common::linked_data::{BlockEncoded, Link};
 use common::peer::{BlobsStore, BucketStateProvider, SyncStatus};
 
@@ -64,9 +64,9 @@ impl JaxState {
     }
 
     /// Load a BucketData from a link
-    async fn load_bucket_data(&self, link: &Link) -> Result<BucketData, anyhow::Error> {
+    async fn load_bucket_data(&self, link: &Link) -> Result<Manifest, anyhow::Error> {
         let data = self.blobs().get(link.hash()).await?;
-        Ok(BucketData::decode(&data)?)
+        Ok(Manifest::decode(&data)?)
     }
 
     /// Check if a target link is in the bucket's history

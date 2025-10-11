@@ -8,7 +8,6 @@ use super::error::MountOpsError;
 pub struct ShareInfo {
     pub public_key: String,
     pub role: String,
-    pub root_link: String,
 }
 
 /// Get all shares (peers) for a bucket
@@ -21,16 +20,15 @@ pub async fn get_bucket_shares(
 
     // Get the bucket data from the mount
     let inner = bucket_mount.inner();
-    let bucket_data = inner.bucket_data();
+    let manifest = inner.manifest();
 
     // Convert shares to ShareInfo
-    let shares: Vec<ShareInfo> = bucket_data
+    let shares: Vec<ShareInfo> = manifest
         .shares()
         .values()
         .map(|share| ShareInfo {
             public_key: share.principal().identity.to_hex(),
             role: format!("{:?}", share.principal().role),
-            root_link: share.root().hash().to_string(),
         })
         .collect();
 
