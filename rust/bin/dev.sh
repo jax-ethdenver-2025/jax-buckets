@@ -29,7 +29,7 @@ init_node() {
 
     if [ ! -d "$node_dir" ]; then
         echo -e "${YELLOW}Initializing $node_name (first run)...${NC}"
-        cargo run --bin cli -- --config-path "$node_dir" init --api-addr "0.0.0.0:$api_port" --html-addr "0.0.0.0:$html_port"
+        cargo run --bin jax -- --config-path "$node_dir" init --api-addr "0.0.0.0:$api_port" --html-addr "0.0.0.0:$html_port"
         echo -e "${GREEN}$node_name initialized with API:$api_port HTML:$html_port${NC}"
     else
         echo -e "${GREEN}$node_name already initialized${NC}"
@@ -47,7 +47,7 @@ if tmux has-session -t jax-dev 2>/dev/null; then
 fi
 
 # Check if cargo-watch is installed
-if ! command -v cargo-watch &> /dev/null; then
+if ! command -v cargo-watch &>/dev/null; then
     echo -e "${BLUE}cargo-watch not found, installing...${NC}"
     cargo install cargo-watch
 fi
@@ -61,10 +61,10 @@ tmux new-session -d -s jax-dev -n "jax-nodes"
 tmux split-window -h -t jax-dev:0
 
 # Run node1 in left pane with cargo watch
-tmux send-keys -t jax-dev:0.0 "cd $PROJECT_ROOT && RUST_LOG=info cargo watch -x 'run --bin cli -- --config-path ./data/node1 service'" C-m
+tmux send-keys -t jax-dev:0.0 "cd $PROJECT_ROOT && RUST_LOG=info cargo watch -x 'run --bin jax -- --config-path ./data/node1 service'" C-m
 
 # Run node2 in right pane with cargo watch
-tmux send-keys -t jax-dev:0.1 "cd $PROJECT_ROOT && RUST_LOG=info cargo watch -x 'run --bin cli -- --config-path ./data/node2 service'" C-m
+tmux send-keys -t jax-dev:0.1 "cd $PROJECT_ROOT && RUST_LOG=info cargo watch -x 'run --bin jax -- --config-path ./data/node2 service'" C-m
 
 # Create a new window for database inspection
 tmux new-window -t jax-dev:1 -n "db"

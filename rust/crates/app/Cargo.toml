@@ -15,8 +15,8 @@ name = "jax"
 path = "src/main.rs"
 
 [dependencies]
-common = { path = "../common" }
-service = { path = "../service", features = ["clap"] }
+common = { package = "jax-common", version = "0.1.0", path = "../common" }
+service = { package = "jax-service", version = "0.1.0", path = "../service", features = ["clap"] }
 
 clap = { workspace = true }
 anyhow = { workspace = true }

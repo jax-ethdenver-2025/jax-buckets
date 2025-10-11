@@ -58,7 +58,11 @@ impl State {
 
         // Build the node once with protocol state
         let node = node_builder.build().await;
+
+        // Log the bound addresses
+        let bound_addrs = node.endpoint().bound_sockets();
         tracing::info!("Node id: {} (with JAX protocol)", node.id());
+        tracing::info!("Peer listening on: {:?}", bound_addrs);
 
         // Now that the node is built, set the blobs store in JaxState
         jax_state.set_blobs(node.blobs().clone());

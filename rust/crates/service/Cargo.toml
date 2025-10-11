@@ -1,5 +1,5 @@
 [package]
-name = "service"
+name = "jax-service"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,7 +8,6 @@ homepage.workspace = true
 description = "HTTP server and P2P sync manager for JaxBucket"
 keywords.workspace = true
 categories.workspace = true
-publish = false
 build = "build.rs"
 
 [lib]
@@ -17,7 +16,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # Workspace crates
-common = { path = "../common" }
+common = { package = "jax-common", version = "0.1.0", path = "../common" }
 
 # optional clap support for CLI usage
 clap = { workspace = true, optional = true }
