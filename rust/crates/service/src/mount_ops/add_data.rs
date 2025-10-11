@@ -36,7 +36,7 @@ where
         .await
         .map_err(MountOpsError::Mount)?;
 
-    mount.add(&mount_path, reader, &blobs).await?;
+    mount.add(&mount_path, reader, blobs).await?;
 
     let new_bucket_link = mount.save(blobs).await?;
 

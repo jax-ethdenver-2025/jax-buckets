@@ -15,6 +15,12 @@ impl Deref for Pins {
     }
 }
 
+impl Default for Pins {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Pins {
     /// Create a new empty pin set
     pub fn new() -> Self {

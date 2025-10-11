@@ -71,7 +71,7 @@ impl BlobsStore {
     /// Get a handle to the underlying blobs client against
     ///  the store
     pub fn blobs(&self) -> &Blobs {
-        &self.inner.store().blobs()
+        self.inner.store().blobs()
     }
 
     /// Get a blob as bytes

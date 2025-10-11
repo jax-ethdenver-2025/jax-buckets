@@ -28,9 +28,16 @@ impl crate::op::Op for Service {
         // Load the secret key
         let secret_key = state.load_key()?;
 
+        // Build node listen address from peer_port if configured
+        let node_listen_addr = state.config.peer_port.map(|port| {
+            format!("0.0.0.0:{}", port)
+                .parse()
+                .expect("Failed to parse peer listen address")
+        });
+
         // Build service config with persistent paths
         let config = ServiceConfig {
-            node_listen_addr: None, // Use ephemeral port for now, can be configured later
+            node_listen_addr,
             node_secret: Some(secret_key),
             node_blobs_store_path: Some(state.blobs_path),
             html_listen_addr: state.config.html_listen_addr.parse().ok(),

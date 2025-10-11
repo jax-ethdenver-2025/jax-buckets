@@ -93,6 +93,7 @@ impl Mount {
     }
 
     /// Save the current mount state to the blobs store
+    #[allow(clippy::await_holding_lock)]
     pub async fn save(&self, blobs: &BlobsStore) -> Result<Link, MountError> {
         let mut inner = self.0.lock();
         // Create a new secret for the updated root
@@ -112,7 +113,7 @@ impl Mount {
         let _m = manifest.clone();
         let shares = _m.shares();
         manifest.unset_shares();
-        for (_public_key_string, share) in shares {
+        for share in shares.values() {
             let public_key = share.principal().identity;
             manifest.add_share(public_key, secret.clone())?;
         }

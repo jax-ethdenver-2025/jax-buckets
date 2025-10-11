@@ -156,29 +156,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "app"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64",
- "chrono",
- "clap",
- "common",
- "directories",
- "dirs",
- "reqwest",
- "serde",
- "service",
- "thiserror 1.0.69",
- "tokio",
- "toml",
- "tracing",
- "url",
- "uuid",
-]
-
-[[package]]
 name = "arrayref"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2760,6 +2737,29 @@ name = "itoa"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
+
+[[package]]
+name = "jax-bucket"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64",
+ "chrono",
+ "clap",
+ "common",
+ "directories",
+ "dirs",
+ "reqwest",
+ "serde",
+ "service",
+ "thiserror 1.0.69",
+ "tokio",
+ "toml",
+ "tracing",
+ "url",
+ "uuid",
+]
 
 [[package]]
 name = "jni"

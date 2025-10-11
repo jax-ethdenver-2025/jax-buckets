@@ -125,7 +125,7 @@ impl Secret {
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         let ciphertext = cipher
-            .encrypt(&nonce, data.as_ref())
+            .encrypt(nonce, data.as_ref())
             .map_err(|_| anyhow::anyhow!("encrypt error"))?;
 
         let mut out = Vec::with_capacity(NONCE_SIZE + ciphertext.len());

@@ -1,10 +1,17 @@
 [package]
-name = "app"
-version = "0.1.0"
-edition = "2021"
+name = "jax-bucket"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "End-to-end encrypted storage buckets with peer-to-peer synchronization"
+keywords.workspace = true
+categories.workspace = true
+readme = "../../../README.md"
 
 [[bin]]
-name = "cli"
+name = "jax"
 path = "src/main.rs"
 
 [dependencies]

@@ -129,7 +129,7 @@ impl SyncManager {
 
     /// get a bucket locally
     async fn get_bucket(&self, link: &Link) -> anyhow::Result<Manifest> {
-        let data = self.state.node().blobs().get(&link.hash()).await?;
+        let data = self.state.node().blobs().get(link.hash()).await?;
         let bucket_data = Manifest::decode(&data)?;
 
         Ok(bucket_data)
@@ -227,7 +227,7 @@ impl SyncManager {
             return Ok(());
         }
 
-        let current_link: Link = bucket.link.clone().into();
+        let current_link: Link = bucket.link.into();
         tracing::info!(
             "Pull sync: checking {} peers for bucket {}",
             peers.len(),
@@ -242,7 +242,7 @@ impl SyncManager {
                 let peer = peer_addr.clone();
                 let link = current_link.clone();
                 async move {
-                    match ping_peer(&endpoint, &peer, bucket_id, link).await {
+                    match ping_peer(endpoint, &peer, bucket_id, link).await {
                         Ok(status) => Some((peer, status)),
                         Err(e) => {
                             tracing::warn!("Failed to ping peer {:?}: {}", peer, e);
@@ -275,7 +275,7 @@ impl SyncManager {
         tracing::info!("Found ahead peer {:?} for bucket {}", peer_addr, bucket_id);
 
         // 5. Fetch the current bucket link from the ahead peer
-        let new_link = match fetch_bucket(&endpoint, &peer_addr, bucket_id).await {
+        let new_link = match fetch_bucket(endpoint, &peer_addr, bucket_id).await {
             Ok(Some(link)) => link,
             Ok(None) => {
                 tracing::warn!(
@@ -366,7 +366,7 @@ impl SyncManager {
         let peer_ids = vec![peer_pub_key.into()];
 
         match blobs
-            .download_hash_list(pins_hash, peer_ids.clone(), &endpoint)
+            .download_hash_list(pins_hash, peer_ids.clone(), endpoint)
             .await
         {
             Ok(()) => {
@@ -444,7 +444,7 @@ impl SyncManager {
                 let link = new_link.clone();
                 let prev = previous_link.clone();
                 async move {
-                    match announce_to_peer(&endpoint, &peer, bucket_id, link, prev).await {
+                    match announce_to_peer(endpoint, &peer, bucket_id, link, prev).await {
                         Ok(()) => {
                             tracing::debug!("Successfully announced to peer {:?}", peer);
                             Some(())
@@ -597,7 +597,7 @@ impl SyncManager {
             }
         };
 
-        let current_link: Link = bucket.link.clone().into();
+        let current_link: Link = bucket.link.into();
 
         // 2. Parse peer public key from peer_id (hex string)
         let peer_pub_key = match PublicKey::from_hex(&peer_id) {

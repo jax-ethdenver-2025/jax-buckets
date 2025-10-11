@@ -1,13 +1,19 @@
 [package]
 name = "service"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "HTTP server and P2P sync manager for JaxBucket"
+keywords.workspace = true
+categories.workspace = true
+publish = false
 build = "build.rs"
 
 [lib]
 name = "service"
 path = "src/lib.rs"
-build = "build.rs"
 
 [dependencies]
 # Workspace crates

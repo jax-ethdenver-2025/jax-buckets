@@ -54,7 +54,7 @@ impl JaxProtocol {
             tracing::debug!("JAX handler: Reading request from stream");
             let request_bytes = recv.read_to_end(1024 * 1024).await.map_err(|e| {
                 tracing::error!("JAX handler: Failed to read request: {}", e);
-                AcceptError::from(std::io::Error::new(std::io::ErrorKind::Other, e))
+                AcceptError::from(std::io::Error::other(e))
             })?; // 1MB limit
             tracing::debug!(
                 "JAX handler: Read {} bytes from stream",
@@ -110,13 +110,13 @@ impl JaxProtocol {
                     tracing::debug!("JAX handler: Writing response to stream");
                     send.write_all(&response_bytes).await.map_err(|e| {
                         tracing::error!("JAX handler: Failed to write response: {}", e);
-                        AcceptError::from(std::io::Error::new(std::io::ErrorKind::Other, e))
+                        AcceptError::from(std::io::Error::other(e))
                     })?;
 
                     tracing::debug!("JAX handler: Finishing send stream");
                     send.finish().map_err(|e| {
                         tracing::error!("JAX handler: Failed to finish send stream: {}", e);
-                        AcceptError::from(std::io::Error::new(std::io::ErrorKind::Other, e))
+                        AcceptError::from(std::io::Error::other(e))
                     })?;
 
                     tracing::debug!("JAX handler: Waiting for connection to close");
@@ -154,11 +154,11 @@ impl JaxProtocol {
                     })?;
 
                     send.write_all(&response_bytes).await.map_err(|e| {
-                        AcceptError::from(std::io::Error::new(std::io::ErrorKind::Other, e))
+                        AcceptError::from(std::io::Error::other(e))
                     })?;
 
                     send.finish().map_err(|e| {
-                        AcceptError::from(std::io::Error::new(std::io::ErrorKind::Other, e))
+                        AcceptError::from(std::io::Error::other(e))
                     })?;
 
                     conn.closed().await;
@@ -192,7 +192,7 @@ impl JaxProtocol {
 
                     // No response needed for announce - just finish the stream
                     send.finish().map_err(|e| {
-                        AcceptError::from(std::io::Error::new(std::io::ErrorKind::Other, e))
+                        AcceptError::from(std::io::Error::other(e))
                     })?;
                 }
             }

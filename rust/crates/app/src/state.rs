@@ -15,6 +15,9 @@ pub struct AppConfig {
     pub html_listen_addr: String,
     /// Listen address for the API server
     pub api_listen_addr: String,
+    /// Listen port for the peer (P2P) node (optional, defaults to ephemeral)
+    #[serde(default)]
+    pub peer_port: Option<u16>,
 }
 
 impl Default for AppConfig {
@@ -22,6 +25,7 @@ impl Default for AppConfig {
         Self {
             html_listen_addr: "0.0.0.0:8080".to_string(),
             api_listen_addr: "0.0.0.0:3000".to_string(),
+            peer_port: None,
         }
     }
 }
@@ -50,7 +54,7 @@ impl AppState {
         }
 
         // Use home directory directly since we want ~/.jax
-        let home = dirs::home_dir().ok_or_else(|| StateError::NoHomeDirectory)?;
+        let home = dirs::home_dir().ok_or(StateError::NoHomeDirectory)?;
         Ok(home.join(format!(".{}", APP_NAME)))
     }
 

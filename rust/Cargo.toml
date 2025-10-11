@@ -2,6 +2,15 @@
 resolver = "2"
 members = ["crates/service", "crates/app", "crates/common"]
 
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/jax-ethdenver-2025/jax-bucket"
+homepage = "https://github.com/jax-ethdenver-2025/jax-bucket"
+keywords = ["p2p", "encryption", "storage", "ipfs", "sync"]
+categories = ["cryptography", "network-programming", "filesystem"]
+
 [workspace.dependencies]
 # Core async/error handling
 anyhow = "1.0"
