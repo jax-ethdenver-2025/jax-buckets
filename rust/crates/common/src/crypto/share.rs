@@ -198,9 +198,13 @@ impl Share {
         let ephemeral_public_bytes = &self.0[..PUBLIC_KEY_SIZE];
         let ephemeral_public = PublicKey::try_from(ephemeral_public_bytes)?;
 
+        println!("Ephemeral Public Key: {:?}", ephemeral_public);
+
         // Convert keys to X25519 for ECDH
         let recipient_x25519_private = recipient_secret.to_x25519();
         let ephemeral_x25519_public = ephemeral_public.to_x25519()?;
+
+        println!("Ephemeral X25519 Public Key: {:?}", ephemeral_x25519_public);
 
         // Perform ECDH to get same shared secret
         let shared_secret = recipient_x25519_private.diffie_hellman(&ephemeral_x25519_public);
@@ -210,10 +214,14 @@ impl Share {
         let kek = Kek::from(shared_secret_bytes);
         let wrapped_data = &self.0[PUBLIC_KEY_SIZE..];
 
+        println!("Wrapped Data: {:?}", wrapped_data);
+
         // Find the actual length of wrapped data (AES-KW adds padding)
         let unwrapped = kek
             .unwrap_vec(wrapped_data)
             .map_err(|_| anyhow::anyhow!("AES-KW unwrap error"))?;
+
+        println!("Unwrapped Data: {:?}", unwrapped);
 
         if unwrapped.len() != SECRET_SIZE {
             return Err(anyhow::anyhow!("unwrapped secret has wrong size").into());
