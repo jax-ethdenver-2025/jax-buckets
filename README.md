@@ -1,5 +1,7 @@
 # JaxBucket
 
+v.0.1.0
+
 **End-to-End Encrypted Storage Buckets with Peer-to-Peer Synchronization**
 
 JaxBucket is a local-first, encrypted storage system built on [Iroh](https://iroh.computer/). It provides content-addressed, encrypted file storage with automatic peer-to-peer synchronization between authorized devices.
