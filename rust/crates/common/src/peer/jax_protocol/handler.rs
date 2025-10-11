@@ -153,13 +153,12 @@ impl JaxProtocol {
                         AcceptError::from(err)
                     })?;
 
-                    send.write_all(&response_bytes).await.map_err(|e| {
-                        AcceptError::from(std::io::Error::other(e))
-                    })?;
+                    send.write_all(&response_bytes)
+                        .await
+                        .map_err(|e| AcceptError::from(std::io::Error::other(e)))?;
 
-                    send.finish().map_err(|e| {
-                        AcceptError::from(std::io::Error::other(e))
-                    })?;
+                    send.finish()
+                        .map_err(|e| AcceptError::from(std::io::Error::other(e)))?;
 
                     conn.closed().await;
 
@@ -191,9 +190,8 @@ impl JaxProtocol {
                     }
 
                     // No response needed for announce - just finish the stream
-                    send.finish().map_err(|e| {
-                        AcceptError::from(std::io::Error::other(e))
-                    })?;
+                    send.finish()
+                        .map_err(|e| AcceptError::from(std::io::Error::other(e)))?;
                 }
             }
 
