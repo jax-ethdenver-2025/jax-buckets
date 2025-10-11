@@ -7,7 +7,7 @@ use parking_lot::Mutex;
 use uuid::Uuid;
 
 use crate::bucket::{BucketData, Node, NodeError, NodeLink};
-use crate::crypto::{Secret, SecretError, SecretKey, Share};
+use crate::crypto::{PublicKey, Secret, SecretError, SecretKey, Share};
 use crate::linked_data::{BlockEncoded, CodecError, Link};
 use crate::peer::{BlobsStore, BlobsStoreError};
 
@@ -25,15 +25,23 @@ pub fn clean_path(path: &Path) -> PathBuf {
 
 #[derive(Clone)]
 pub struct MountInner {
-    pub link: Link,
+    pub bucket_link: Link,
     pub bucket_data: BucketData,
+    pub root_link: Link,
     pub root_node: Node,
     pub pins: Pins,
+    pub secret_key: SecretKey,
 }
 
 impl MountInner {
-    pub fn link(&self) -> &Link {
-        &self.link
+    pub fn bucket_link(&self) -> &Link {
+        &self.bucket_link
+    }
+    pub fn root_link(&self) -> &Link {
+        &self.root_link
+    }
+    pub fn root_node(&self) -> &Node {
+        &self.root_node
     }
     pub fn bucket_data(&self) -> &BucketData {
         &self.bucket_data
@@ -66,6 +74,8 @@ pub enum BucketError {
     Codec(#[from] CodecError),
     #[error("share error: {0}")]
     Share(#[from] crate::crypto::ShareError),
+    #[error("peers share was not found. this should be impossible")]
+    ShareNotFound,
 }
 
 impl Bucket {
@@ -73,34 +83,52 @@ impl Bucket {
         self.0.lock().clone()
     }
 
-    pub fn link(&self) -> Link {
+    pub fn bucket_link(&self) -> Link {
         let inner = self.0.lock();
 
-        inner.link.clone()
+        inner.bucket_link.clone()
+    }
+
+    pub fn root_link(&self) -> Link {
+        let inner = self.0.lock();
+
+        inner.root_link.clone()
     }
 
     /// Save the current mount state by updating the bucket in blobs
     /// Returns the new bucket link that should be stored in the database
-    pub async fn save(
-        &self,
-        secret_key: &SecretKey,
-        blobs: &BlobsStore,
-    ) -> Result<Link, BucketError> {
+    pub async fn save(&self, blobs: &BlobsStore) -> Result<Link, BucketError> {
         let mut inner = self.0.lock();
 
         // Create a new secret for the updated root
         let secret = Secret::generate();
 
+        // get the now previous link to the bucket
+        let previous = inner.bucket_link.clone();
+
         // Put the current root node into blobs with the new secret
         let new_root_link = Self::_put_node_in_blobs(&inner.root_node, &secret, blobs).await?;
 
         // Serialize current pins to blobs
+        // put the new root link into the pins
+        inner.pins.insert(*new_root_link.clone().hash());
         let pins_link = Self::_put_pins_in_blobs(&inner.pins, blobs).await?;
 
         // Update the bucket's share with the new root link
         // (add_share creates the Share internally)
         let mut updated_bucket = inner.bucket_data.clone();
-        updated_bucket.add_share(secret_key.public(), new_root_link.clone(), secret)?;
+        let _ub = updated_bucket.clone();
+        let shares = _ub.shares();
+
+        // set the previous
+        updated_bucket.set_previous(previous);
+        // set the shares by iterating through the available shares
+        // unset the shares
+        updated_bucket.unset_shares();
+        for (_public_key_string, share) in shares {
+            let public_key = share.principal().identity;
+            updated_bucket.add_share(public_key, new_root_link.clone(), secret.clone())?;
+        }
 
         // Update the bucket's pins field
         updated_bucket.set_pins(pins_link.clone());
@@ -115,7 +143,7 @@ impl Bucket {
         inner.pins.insert(*new_bucket_link.hash());
 
         // Update our internal state
-        inner.link = new_root_link;
+        inner.root_link = new_root_link;
         inner.bucket_data = updated_bucket;
 
         Ok(new_bucket_link)
@@ -127,30 +155,71 @@ impl Bucket {
         owner: &SecretKey,
         blobs: &BlobsStore,
     ) -> Result<Self, BucketError> {
+        tracing::debug!(
+            "Bucket::init: Creating new bucket '{}' for owner {}",
+            name,
+            owner.public().to_hex()
+        );
+
         // create a new root node for the bucket
-        let node = Node::default();
+        let root_node = Node::default();
         // create a new secret for the owner
         let secret = Secret::generate();
         // put the node in the blobs store for the secret
-        let root = Self::_put_node_in_blobs(&node, &secret, blobs).await?;
+        let root_link = Self::_put_node_in_blobs(&root_node, &secret, blobs).await?;
+        tracing::debug!(
+            "Bucket::init: Created root node with hash {}",
+            root_link.hash()
+        );
+
         // share the secret with the owner
         let share = Share::new(&secret, &owner.public())?;
-        // construct the new bucket
-        let bucket_data = BucketData::init(id, name, owner.public(), share, root.clone());
-        // put the bucket in the blobs store for the secret
-        let link = Self::_put_bucket_in_blobs(&bucket_data, blobs).await?;
 
-        // Initialize pins with root node hash and bucket hash
+        // Initialize pins with root node hash
         let mut pins = Pins::new();
-        pins.insert(*root.hash());
-        pins.insert(*link.hash());
+        pins.insert(*root_link.hash());
+        tracing::debug!(
+            "Bucket::init: Created pins with root node hash: {}",
+            root_link.hash()
+        );
+        tracing::debug!(
+            "Bucket::init: Pins before storing: {:?}",
+            pins.iter().collect::<Vec<_>>()
+        );
+
+        // Put the pins in blobs to get a pins link
+        let pins_link = Self::_put_pins_in_blobs(&pins, blobs).await?;
+        tracing::debug!("Bucket::init: Stored pinset with hash {}", pins_link.hash());
+
+        // Add pins link hash to the pins (will be saved on next save)
+        pins.insert(*pins_link.hash());
+
+        // construct the new bucket with the pins link
+        let mut bucket_data =
+            BucketData::init(id, name.clone(), owner.public(), share, root_link.clone());
+        bucket_data.set_pins(pins_link.clone());
+        tracing::debug!("Bucket::init: Created BucketData with pinset link");
+
+        // put the bucket in the blobs store
+        let bucket_link = Self::_put_bucket_in_blobs(&bucket_data, blobs).await?;
+        tracing::info!(
+            "Bucket::init: Created bucket '{}' with hash {} and pinset hash {}",
+            name,
+            bucket_link.hash(),
+            pins_link.hash()
+        );
+
+        // Add bucket hash to pins (will be saved on next save)
+        pins.insert(*bucket_link.hash());
 
         // return the new mount
         Ok(Bucket(Arc::new(Mutex::new(MountInner {
-            link,
+            bucket_link,
+            root_link,
             bucket_data,
-            root_node: node,
+            root_node,
             pins,
+            secret_key: owner.clone(),
         }))))
     }
 
@@ -161,48 +230,113 @@ impl Bucket {
     ) -> Result<Self, BucketError> {
         let public_key = &secret_key.public();
 
+        tracing::debug!("Bucket::load: Loading bucket from link {}", link.hash());
         let bucket = Self::_get_bucket_from_blobs(link, blobs).await?;
 
         let _bucket_share = bucket.get_share(public_key);
 
         if _bucket_share.is_none() {
-            return Err(BucketError::LinkNotFound(link.clone()));
+            return Err(BucketError::ShareNotFound);
         }
 
         let bucket_share = _bucket_share.unwrap();
         let share = bucket_share.share();
         let secret = share.recover(secret_key)?;
 
-        let link = bucket_share.root().clone();
-        if link == Link::default() {
+        let root_link = bucket_share.root().clone();
+        tracing::info!(
+            "Bucket::load: Root link from bucket share: {}",
+            root_link.hash()
+        );
+
+        if root_link == Link::default() {
             // TODO (amiller68): be better
             panic!("default link found")
         } else {
-            let root_node =
-                Self::_get_node_from_blobs(&NodeLink::Dir(link.clone(), secret), blobs).await?;
-
-            // Load or initialize pins
+            // Load or initialize pins FIRST to see what we have
             let pins = if let Some(pins_link) = bucket.pins() {
+                tracing::info!("Bucket::load: Loading pins from link {}", pins_link.hash());
                 // Load existing pins from blobs
                 match Self::_get_pins_from_blobs(pins_link, blobs).await {
-                    Ok(pins) => pins,
-                    Err(_) => {
+                    Ok(pins) => {
+                        tracing::info!("Bucket::load: Loaded {} pins from blobs", pins.len());
+                        tracing::info!(
+                            "Bucket::load: Pins content: {:?}",
+                            pins.iter().collect::<Vec<_>>()
+                        );
+
+                        // Check if root link is in pins
+                        if pins.contains(root_link.hash()) {
+                            tracing::info!(
+                                "Bucket::load: Root link hash {} IS in pinset",
+                                root_link.hash()
+                            );
+                        } else {
+                            tracing::warn!(
+                                "Bucket::load: Root link hash {} NOT in pinset!",
+                                root_link.hash()
+                            );
+                        }
+
+                        pins
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Bucket::load: Failed to load pins: {}, starting with empty set",
+                            e
+                        );
                         // If pins blob is missing, start with empty set
                         Pins::new()
                     }
                 }
             } else {
+                tracing::debug!("Bucket::load: No pins link in bucket, starting with empty set");
                 // Legacy bucket without pins, start with empty set
                 Pins::new()
             };
 
+            tracing::info!(
+                "Bucket::load: Loading root node from hash {}",
+                root_link.hash()
+            );
+            let root_node =
+                Self::_get_node_from_blobs(&NodeLink::Dir(root_link.clone(), secret), blobs)
+                    .await?;
+            tracing::debug!("Bucket::load: Successfully loaded root node");
+
             Ok(Bucket(Arc::new(Mutex::new(MountInner {
-                link,
+                bucket_link: link.clone(),
+                root_link: root_link.clone(),
                 bucket_data: bucket,
                 root_node,
                 pins,
+                secret_key: secret_key.clone(),
             }))))
         }
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    pub async fn share(
+        &mut self,
+        peer_public_key: PublicKey,
+        _blobs: &BlobsStore,
+    ) -> Result<(), BucketError> {
+        let mut inner = self.0.lock();
+        // recover our secret
+        let _share = inner.bucket_data().get_share(&inner.secret_key.public());
+        let share = match _share {
+            Some(share) => share,
+            None => panic!("Missing share"),
+        };
+        let secret = share.share().recover(&inner.secret_key)?;
+        // Clone bucket_data and add the new share
+        let mut updated_bucket = inner.bucket_data.clone();
+        updated_bucket.add_share(peer_public_key, inner.root_link.clone(), secret)?;
+
+        // Update internal state
+        inner.bucket_data = updated_bucket;
+
+        Ok(())
     }
 
     #[allow(clippy::await_holding_lock)]
@@ -258,7 +392,7 @@ impl Bucket {
                 blobs,
             )
             .await?;
-            inner.link = new_root_link;
+            // inner.link = new_root_link;
         }
 
         Ok(())
@@ -295,7 +429,7 @@ impl Bucket {
             // Track the new root node hash
             inner.pins.insert(*link.hash());
             inner.root_node = parent_node;
-            inner.link = link;
+            inner.root_link = link;
         } else {
             // Save the modified parent node to blobs
             let secret = Secret::generate();
@@ -323,7 +457,7 @@ impl Bucket {
                     blobs,
                 )
                 .await?;
-                inner.link = new_root_link;
+                inner.root_link = new_root_link;
             }
         }
 
@@ -556,19 +690,84 @@ impl Bucket {
         link: &Link,
         blobs: &BlobsStore,
     ) -> Result<BucketData, BucketError> {
-        if !(blobs.stat(link.hash()).await?) {
-            return Err(BucketError::LinkNotFound(link.clone()));
-        };
-        let data = blobs.get(link.hash()).await?;
-        Ok(BucketData::decode(&data)?)
+        tracing::debug!(
+            "_get_bucket_from_blobs: Checking for bucket data at link {:?}",
+            link
+        );
+        let hash = link.hash();
+        tracing::debug!("_get_bucket_from_blobs: Bucket hash: {}", hash);
+
+        match blobs.stat(hash).await {
+            Ok(true) => {
+                tracing::debug!(
+                    "_get_bucket_from_blobs: Bucket hash {} exists in blobs",
+                    hash
+                );
+            }
+            Ok(false) => {
+                tracing::error!("_get_bucket_from_blobs: Bucket hash {} NOT FOUND in blobs - LinkNotFound error!", hash);
+                return Err(BucketError::LinkNotFound(link.clone()));
+            }
+            Err(e) => {
+                tracing::error!(
+                    "_get_bucket_from_blobs: Error checking bucket hash {}: {}",
+                    hash,
+                    e
+                );
+                return Err(e.into());
+            }
+        }
+
+        tracing::debug!("_get_bucket_from_blobs: Reading bucket data from blobs");
+        let data = blobs.get(hash).await?;
+        tracing::debug!(
+            "_get_bucket_from_blobs: Got {} bytes of bucket data",
+            data.len()
+        );
+
+        let bucket_data = BucketData::decode(&data)?;
+        tracing::debug!(
+            "_get_bucket_from_blobs: Successfully decoded BucketData for bucket '{}'",
+            bucket_data.name()
+        );
+
+        Ok(bucket_data)
     }
 
     async fn _get_pins_from_blobs(link: &Link, blobs: &BlobsStore) -> Result<Pins, BucketError> {
-        if !(blobs.stat(link.hash()).await?) {
-            return Err(BucketError::LinkNotFound(link.clone()));
-        };
+        tracing::debug!("_get_pins_from_blobs: Checking for pins at link {:?}", link);
+        let hash = link.hash();
+        tracing::debug!("_get_pins_from_blobs: Pins hash: {}", hash);
+
+        match blobs.stat(hash).await {
+            Ok(true) => {
+                tracing::debug!("_get_pins_from_blobs: Pins hash {} exists in blobs", hash);
+            }
+            Ok(false) => {
+                tracing::error!(
+                    "_get_pins_from_blobs: Pins hash {} NOT FOUND in blobs - LinkNotFound error!",
+                    hash
+                );
+                return Err(BucketError::LinkNotFound(link.clone()));
+            }
+            Err(e) => {
+                tracing::error!(
+                    "_get_pins_from_blobs: Error checking pins hash {}: {}",
+                    hash,
+                    e
+                );
+                return Err(e.into());
+            }
+        }
+
+        tracing::debug!("_get_pins_from_blobs: Reading hash list from blobs");
         // Read hashes from the hash list blob
-        let hashes = blobs.read_hash_list(*link.hash()).await?;
+        let hashes = blobs.read_hash_list(*hash).await?;
+        tracing::debug!(
+            "_get_pins_from_blobs: Successfully read {} hashes from pinset",
+            hashes.len()
+        );
+
         Ok(Pins::from_vec(hashes))
     }
 
@@ -578,13 +777,46 @@ impl Bucket {
     ) -> Result<Node, BucketError> {
         let link = node_link.link();
         let secret = node_link.secret();
-        if !(blobs.stat(link.hash()).await?) {
-            return Err(BucketError::LinkNotFound(link.clone()));
-        };
-        let blob = blobs.get(link.hash()).await?;
-        let data = secret.decrypt(&blob)?;
+        let hash = link.hash();
 
-        Ok(Node::decode(&data)?)
+        tracing::debug!("_get_node_from_blobs: Checking for node at hash {}", hash);
+
+        match blobs.stat(hash).await {
+            Ok(true) => {
+                tracing::debug!("_get_node_from_blobs: Node hash {} exists in blobs", hash);
+            }
+            Ok(false) => {
+                tracing::error!(
+                    "_get_node_from_blobs: Node hash {} NOT FOUND in blobs - LinkNotFound error!",
+                    hash
+                );
+                return Err(BucketError::LinkNotFound(link.clone()));
+            }
+            Err(e) => {
+                tracing::error!(
+                    "_get_node_from_blobs: Error checking node hash {}: {}",
+                    hash,
+                    e
+                );
+                return Err(e.into());
+            }
+        }
+
+        tracing::debug!("_get_node_from_blobs: Reading encrypted node blob");
+        let blob = blobs.get(hash).await?;
+        tracing::debug!(
+            "_get_node_from_blobs: Got {} bytes of encrypted node data",
+            blob.len()
+        );
+
+        tracing::debug!("_get_node_from_blobs: Decrypting node data");
+        let data = secret.decrypt(&blob)?;
+        tracing::debug!("_get_node_from_blobs: Decrypted {} bytes", data.len());
+
+        let node = Node::decode(&data)?;
+        tracing::debug!("_get_node_from_blobs: Successfully decoded Node");
+
+        Ok(node)
     }
 
     // TODO (amiller68): you should inline a Link
@@ -620,7 +852,7 @@ impl Bucket {
         Ok(link)
     }
 
-    async fn _put_pins_in_blobs(pins: &Pins, blobs: &BlobsStore) -> Result<Link, BucketError> {
+    pub async fn _put_pins_in_blobs(pins: &Pins, blobs: &BlobsStore) -> Result<Link, BucketError> {
         // Create a hash list blob from the pins (raw bytes: 32 bytes per hash, concatenated)
         let hash = blobs.create_hash_list(pins.iter().copied()).await?;
         // Pins are stored as raw blobs containing concatenated hashes

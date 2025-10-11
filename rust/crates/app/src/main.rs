@@ -20,7 +20,7 @@ async fn main() {
     let args = Args::parse();
 
     // Build context - always has API client initialized
-    let ctx = match op::OpContext::new(args.remote) {
+    let ctx = match op::OpContext::new(args.remote, args.config_path) {
         Ok(ctx) => ctx,
         Err(e) => {
             eprintln!("Error: Failed to create API client: {}", e);

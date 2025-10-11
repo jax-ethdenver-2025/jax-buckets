@@ -50,7 +50,7 @@ pub async fn handler(
 
     // Get links from mount
     let bucket_link: Link = bucket.link.into();
-    let root_link = mount.inner().link().clone();
+    let root_link = mount.inner().root_link().clone();
 
     Ok((
         http::StatusCode::OK,

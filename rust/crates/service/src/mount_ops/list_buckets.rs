@@ -17,6 +17,9 @@ pub async fn list_buckets(state: &ServiceState) -> Result<Vec<BucketInfo>, Mount
             name: b.name,
             link: b.link.into(),
             created_at: b.created_at,
+            sync_status: b.sync_status,
+            last_sync_attempt: b.last_sync_attempt,
+            sync_error: b.sync_error,
         })
         .collect())
 }

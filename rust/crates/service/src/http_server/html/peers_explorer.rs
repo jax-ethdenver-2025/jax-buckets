@@ -26,7 +26,7 @@ fn status_badge_class(status: &SyncStatus) -> (&'static str, &'static str) {
         SyncStatus::NotFound => ("Not Found", "bg-gray-100 text-gray-800"),
         SyncStatus::Behind => ("Behind", "bg-yellow-100 text-yellow-800"),
         SyncStatus::InSync => ("In Sync", "bg-green-100 text-green-800"),
-        SyncStatus::Unsynced => ("Unsynced", "bg-orange-100 text-orange-800"),
+        SyncStatus::Ahead => ("Ahead", "bg-orange-100 text-orange-800"),
     }
 }
 
@@ -105,7 +105,11 @@ pub async fn handler(
         // Ping with timeout
         let peer_status = match timeout(Duration::from_secs(3), async { ping_result }).await {
             Ok(Ok(status)) => {
-                tracing::info!("Ping successful for peer {}: {:?}", share.public_key, status);
+                tracing::info!(
+                    "Ping successful for peer {}: {:?}",
+                    share.public_key,
+                    status
+                );
                 let (text, class) = status_badge_class(&status);
                 (text.to_string(), class.to_string())
             }
@@ -115,7 +119,10 @@ pub async fn handler(
             }
             Err(_) => {
                 tracing::warn!("Ping timeout for peer {}", share.public_key);
-                ("Offline".to_string(), "bg-gray-100 text-gray-800".to_string())
+                (
+                    "Offline".to_string(),
+                    "bg-gray-100 text-gray-800".to_string(),
+                )
             }
         };
 

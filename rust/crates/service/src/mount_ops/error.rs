@@ -10,4 +10,10 @@ pub enum MountOpsError {
     Database(String),
     #[error("Mount error: {0}")]
     Mount(#[from] common::prelude::MountError),
+    #[error("Share not found")]
+    ShareNotFound,
+    #[error("Crypto error: {0}")]
+    CryptoError(String),
+    #[error("Share error: {0}")]
+    ShareError(String),
 }

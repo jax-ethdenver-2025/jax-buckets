@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT id as \"id!: Uuid\", name as \"name!\", link as \"link!: DCid\", created_at as \"created_at!\", updated_at as \"updated_at!\", sync_status as \"sync_status!: SyncStatus\", last_sync_attempt as \"last_sync_attempt: OffsetDateTime\", sync_error as \"sync_error: String\"\n                FROM buckets\n                WHERE name LIKE $1\n                ORDER BY created_at DESC\n                LIMIT $2\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "name!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "link!: DCid",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!",
+        "ordinal": 3,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!",
+        "ordinal": 4,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "sync_status!: SyncStatus",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "last_sync_attempt: OffsetDateTime",
+        "ordinal": 6,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "sync_error: String",
+        "ordinal": 7,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "e75cef469bb9ef2dddc6685e07b3921bcabd3d664084ccae009a28f5162a4565"
+}

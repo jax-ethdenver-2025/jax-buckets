@@ -3,6 +3,7 @@ pub mod http_server;
 mod jax_state;
 mod mount_ops;
 mod process;
+mod sync_manager;
 
 mod config;
 mod state;

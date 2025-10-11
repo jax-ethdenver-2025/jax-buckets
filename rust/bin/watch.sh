@@ -14,4 +14,4 @@ cargo watch \
     -w crates/service/src \
     -w crates/common/src \
     -w crates/app/src \
-    -x 'run -p app -- service'
+    -x 'run --bin cli -- service'

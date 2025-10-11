@@ -6,9 +6,11 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use bytes::Bytes;
 use futures::Stream;
+use iroh::{Endpoint, NodeId};
 use iroh_blobs::{
     api::{
         blobs::{BlobReader as Reader, BlobStatus, Blobs},
+        downloader::{Downloader, Shuffled},
         ExportBaoError, RequestError,
     },
     store::fs::FsStore,
@@ -116,22 +118,171 @@ impl BlobsStore {
         Ok(matches!(stat, BlobStatus::Complete { .. }))
     }
 
-    // /// Pull a blob from the network using its ticket
-    // ///  Specify a ticker by concatenating the node address
-    // ///  of a peer that has the blob, with the blob hash and format
-    // pub async fn pull(
-    //     &self,
-    //     ticket: &BlobTicket,
-    //     endpoint: &Endpoint,
-    // ) -> Result<(), BlobsStoreError> {
-    //     self.inner
-    //         .downloader(endpoint)
-    //         .download(ticket.hash(), ticket.node_addr().clone())
-    //         .await?
-    //         .finish()
-    //         .await?;
-    //     Ok(())
-    // }
+    /// Download a single hash from peers
+    ///
+    /// This checks if the hash exists locally first, then downloads if needed.
+    /// Uses the Downloader API with Shuffled content discovery.
+    pub async fn download_hash(
+        &self,
+        hash: Hash,
+        peer_ids: Vec<NodeId>,
+        endpoint: &Endpoint,
+    ) -> Result<(), BlobsStoreError> {
+        tracing::debug!("download_hash: Checking if hash {} exists locally", hash);
+
+        // Check if we already have this hash
+        if self.stat(&hash).await? {
+            tracing::debug!(
+                "download_hash: Hash {} already exists locally, skipping download",
+                hash
+            );
+            return Ok(());
+        }
+
+        tracing::info!(
+            "download_hash: Downloading hash {} from {} peers: {:?}",
+            hash,
+            peer_ids.len(),
+            peer_ids
+        );
+
+        // Create downloader - needs the Store from BlobsProtocol
+        let downloader = Downloader::new(self.inner.store(), endpoint);
+
+        // Create content discovery with shuffled peers
+        let discovery = Shuffled::new(peer_ids.clone());
+
+        tracing::debug!(
+            "download_hash: Starting download of hash {} with downloader",
+            hash
+        );
+
+        // Download the hash and wait for completion
+        // DownloadProgress implements IntoFuture, so we can await it directly
+        match downloader.download(hash, discovery).await {
+            Ok(_) => {
+                tracing::info!("download_hash: Successfully downloaded hash {}", hash);
+
+                // Verify it was actually downloaded
+                match self.stat(&hash).await {
+                    Ok(true) => tracing::debug!(
+                        "download_hash: Verified hash {} exists after download",
+                        hash
+                    ),
+                    Ok(false) => {
+                        tracing::error!("download_hash: Hash {} NOT found after download!", hash);
+                        return Err(anyhow!("Hash not found after download").into());
+                    }
+                    Err(e) => {
+                        tracing::error!("download_hash: Error verifying hash {}: {}", hash, e);
+                        return Err(e);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!(
+                    "download_hash: Failed to download hash {} from peers {:?}: {}",
+                    hash,
+                    peer_ids,
+                    e
+                );
+                return Err(e.into());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Download a hash list (pinset) and all referenced hashes
+    ///
+    /// This first downloads the hash list blob, reads the list of hashes,
+    /// then downloads each referenced hash.
+    pub async fn download_hash_list(
+        &self,
+        hash_list_hash: Hash,
+        peer_ids: Vec<NodeId>,
+        endpoint: &Endpoint,
+    ) -> Result<(), BlobsStoreError> {
+        tracing::debug!(
+            "download_hash_list: Starting download of hash list {} from {} peers",
+            hash_list_hash,
+            peer_ids.len()
+        );
+
+        // First download the hash list itself
+        tracing::debug!("download_hash_list: Downloading hash list blob itself");
+        self.download_hash(hash_list_hash, peer_ids.clone(), endpoint)
+            .await?;
+        tracing::debug!("download_hash_list: Hash list blob downloaded successfully");
+
+        // Verify it exists
+        match self.stat(&hash_list_hash).await {
+            Ok(true) => tracing::debug!(
+                "download_hash_list: Verified hash list blob {} exists",
+                hash_list_hash
+            ),
+            Ok(false) => {
+                tracing::error!(
+                    "download_hash_list: Hash list blob {} NOT found after download!",
+                    hash_list_hash
+                );
+                return Err(anyhow!("Hash list blob not found after download").into());
+            }
+            Err(e) => {
+                tracing::error!("download_hash_list: Error checking hash list blob: {}", e);
+                return Err(e);
+            }
+        }
+
+        // Read the list of hashes
+        tracing::debug!("download_hash_list: Reading hash list contents");
+        let hashes = self.read_hash_list(hash_list_hash).await?;
+        tracing::info!(
+            "download_hash_list: Hash list contains {} hashes, downloading all...",
+            hashes.len()
+        );
+
+        if hashes.is_empty() {
+            tracing::warn!("download_hash_list: Hash list is EMPTY - no content to download");
+            return Ok(());
+        }
+
+        // Download each hash in the list
+        for (idx, hash) in hashes.iter().enumerate() {
+            tracing::debug!(
+                "download_hash_list: Downloading content hash {}/{}: {:?}",
+                idx + 1,
+                hashes.len(),
+                hash
+            );
+            match self.download_hash(*hash, peer_ids.clone(), endpoint).await {
+                Ok(()) => {
+                    tracing::debug!(
+                        "download_hash_list: Content hash {}/{} downloaded successfully",
+                        idx + 1,
+                        hashes.len()
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "download_hash_list: Failed to download content hash {}/{} ({:?}): {}",
+                        idx + 1,
+                        hashes.len(),
+                        hash,
+                        e
+                    );
+                    return Err(e);
+                }
+            }
+        }
+
+        tracing::info!(
+            "download_hash_list: Successfully downloaded all {} hashes from hash list",
+            hashes.len()
+        );
+
+        Ok(())
+    }
 
     /// Create a simple blob containing a sequence of hashes
     /// Each hash is 32 bytes, stored consecutively

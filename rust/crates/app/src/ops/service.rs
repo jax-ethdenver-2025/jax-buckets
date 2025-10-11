@@ -21,9 +21,9 @@ impl crate::op::Op for Service {
     type Error = ServiceError;
     type Output = String;
 
-    async fn execute(&self, _ctx: &crate::op::OpContext) -> Result<Self::Output, Self::Error> {
-        // Load state from ~/.jax
-        let state = AppState::load()?;
+    async fn execute(&self, ctx: &crate::op::OpContext) -> Result<Self::Output, Self::Error> {
+        // Load state from config path (or default ~/.jax)
+        let state = AppState::load(ctx.config_path.clone())?;
 
         // Load the secret key
         let secret_key = state.load_key()?;
@@ -36,7 +36,7 @@ impl crate::op::Op for Service {
             html_listen_addr: state.config.html_listen_addr.parse().ok(),
             api_listen_addr: state.config.api_listen_addr.parse().ok(),
             sqlite_path: Some(state.db_path),
-            log_level: tracing::Level::INFO,
+            log_level: tracing::Level::DEBUG,
         };
 
         spawn_service(&config).await;

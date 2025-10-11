@@ -5,9 +5,20 @@ use axum::http::HeaderMap;
 use axum::Extension;
 use tracing::instrument;
 
+use crate::database::models::SyncStatus;
 use crate::http_server::Config;
 use crate::mount_ops;
 use crate::ServiceState;
+
+/// Get status badge styling for a given sync status
+fn status_badge_class(status: &SyncStatus) -> (&'static str, &'static str) {
+    match status {
+        SyncStatus::Synced => ("Synced", "status-badge status-synced"),
+        SyncStatus::OutOfSync => ("Out of Sync", "status-badge status-out-of-sync"),
+        SyncStatus::Syncing => ("Syncing", "status-badge status-syncing"),
+        SyncStatus::Failed => ("Failed", "status-badge status-failed"),
+    }
+}
 
 #[derive(Template)]
 #[template(path = "buckets.html")]
@@ -22,6 +33,10 @@ pub struct BucketDisplayInfo {
     pub bucket_id: String,
     pub name: String,
     pub created_at: String,
+    pub sync_status: String,
+    pub sync_status_class: String,
+    pub last_sync_attempt: String,
+    pub sync_error: String,
 }
 
 #[instrument(skip(state, config))]
@@ -59,10 +74,20 @@ pub async fn handler(
     // Convert to display format
     let display_buckets: Vec<BucketDisplayInfo> = buckets
         .into_iter()
-        .map(|b| BucketDisplayInfo {
-            bucket_id: b.bucket_id.to_string(),
-            name: b.name,
-            created_at: format_timestamp(b.created_at),
+        .map(|b| {
+            let (status_text, status_class) = status_badge_class(&b.sync_status);
+            BucketDisplayInfo {
+                bucket_id: b.bucket_id.to_string(),
+                name: b.name,
+                created_at: format_timestamp(b.created_at),
+                sync_status: status_text.to_string(),
+                sync_status_class: status_class.to_string(),
+                last_sync_attempt: b
+                    .last_sync_attempt
+                    .map(format_timestamp)
+                    .unwrap_or_else(|| "Never".to_string()),
+                sync_error: b.sync_error.unwrap_or_default(),
+            }
         })
         .collect();
 

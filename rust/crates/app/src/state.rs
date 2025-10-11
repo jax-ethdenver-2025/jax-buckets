@@ -43,8 +43,12 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Get the jax directory path (~/.jax)
-    pub fn jax_dir() -> Result<PathBuf, StateError> {
+    /// Get the jax directory path (custom or default ~/.jax)
+    pub fn jax_dir(custom_path: Option<PathBuf>) -> Result<PathBuf, StateError> {
+        if let Some(path) = custom_path {
+            return Ok(path);
+        }
+
         // Use home directory directly since we want ~/.jax
         let home = dirs::home_dir().ok_or_else(|| StateError::NoHomeDirectory)?;
         Ok(home.join(format!(".{}", APP_NAME)))
@@ -52,14 +56,17 @@ impl AppState {
 
     /// Check if jax directory exists
     #[allow(dead_code)]
-    pub fn exists() -> Result<bool, StateError> {
-        let jax_dir = Self::jax_dir()?;
+    pub fn exists(custom_path: Option<PathBuf>) -> Result<bool, StateError> {
+        let jax_dir = Self::jax_dir(custom_path)?;
         Ok(jax_dir.exists())
     }
 
     /// Initialize a new jax state directory
-    pub fn init() -> Result<Self, StateError> {
-        let jax_dir = Self::jax_dir()?;
+    pub fn init(
+        custom_path: Option<PathBuf>,
+        config: Option<AppConfig>,
+    ) -> Result<Self, StateError> {
+        let jax_dir = Self::jax_dir(custom_path)?;
 
         // Create jax directory if it doesn't exist
         if jax_dir.exists() {
@@ -77,8 +84,8 @@ impl AppState {
         let key_path = jax_dir.join(KEY_FILE_NAME);
         fs::write(&key_path, key.to_pem())?;
 
-        // Create default config
-        let config = AppConfig::default();
+        // Create config (use provided or default)
+        let config = config.unwrap_or_default();
         let config_path = jax_dir.join(CONFIG_FILE_NAME);
         let config_toml = toml::to_string_pretty(&config)?;
         fs::write(&config_path, config_toml)?;
@@ -98,8 +105,8 @@ impl AppState {
     }
 
     /// Load existing state from jax directory
-    pub fn load() -> Result<Self, StateError> {
-        let jax_dir = Self::jax_dir()?;
+    pub fn load(custom_path: Option<PathBuf>) -> Result<Self, StateError> {
+        let jax_dir = Self::jax_dir(custom_path)?;
 
         if !jax_dir.exists() {
             return Err(StateError::NotInitialized);

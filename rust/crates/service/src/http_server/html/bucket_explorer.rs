@@ -7,21 +7,44 @@ use serde::Deserialize;
 use tracing::instrument;
 use uuid::Uuid;
 
+use common::bucket::BucketData;
+use common::linked_data::BlockEncoded;
+
+use crate::database::models::SyncStatus;
 use crate::http_server::Config;
 use crate::mount_ops;
 use crate::ServiceState;
+
+/// Get status badge styling for a given sync status
+fn status_badge_class(status: &SyncStatus) -> (&'static str, &'static str) {
+    match status {
+        SyncStatus::Synced => ("Synced", "status-badge status-synced"),
+        SyncStatus::OutOfSync => ("Out of Sync", "status-badge status-out-of-sync"),
+        SyncStatus::Syncing => ("Syncing", "status-badge status-syncing"),
+        SyncStatus::Failed => ("Failed", "status-badge status-failed"),
+    }
+}
 
 #[derive(Template)]
 #[template(path = "bucket_explorer.html")]
 pub struct BucketExplorerTemplate {
     pub bucket_id: String,
     pub bucket_name: String,
+    pub bucket_link: String,
+    pub bucket_link_short: String,
+    pub previous_link: Option<String>,
+    pub previous_link_full: String,
+    pub previous_link_short: String,
+    pub bucket_data_formatted: String,
     pub current_path: String,
     pub path_segments: Vec<PathSegment>,
     pub parent_path_url: String,
     pub items: Vec<FileDisplayInfo>,
     pub read_only: bool,
     pub api_url: String,
+    pub sync_status: String,
+    pub sync_status_class: String,
+    pub sync_error: String,
 }
 
 #[derive(Debug, Clone)]
@@ -110,15 +133,89 @@ pub async fn handler(
         .clone()
         .unwrap_or_else(|| "http://localhost:3000".to_string());
 
+    let (status_text, status_class) = status_badge_class(&bucket.sync_status);
+
+    // Format bucket link for display
+    let bucket_link = bucket.link.hash().to_string();
+    let bucket_link_short = if bucket_link.len() > 16 {
+        format!(
+            "{}...{}",
+            &bucket_link[..8],
+            &bucket_link[bucket_link.len() - 8..]
+        )
+    } else {
+        bucket_link.clone()
+    };
+
+    // Load the full bucket data from blobs to get previous link and format it
+    let blobs = state.node().blobs();
+    let (previous_link, previous_link_full, previous_link_short, bucket_data_formatted) =
+        match blobs.get(bucket.link.hash()).await {
+            Ok(data) => match BucketData::decode(&data) {
+                Ok(bucket_data) => {
+                    // Format bucket data as pretty JSON
+                    let formatted = serde_json::to_string_pretty(&bucket_data)
+                        .unwrap_or_else(|_| format!("{:#?}", bucket_data));
+
+                    // Extract previous link if it exists
+                    let (prev_opt, prev_full, prev_short) =
+                        if let Some(prev) = bucket_data.previous() {
+                            let prev_hash = prev.hash().to_string();
+                            let prev_short = if prev_hash.len() > 16 {
+                                format!(
+                                    "{}...{}",
+                                    &prev_hash[..8],
+                                    &prev_hash[prev_hash.len() - 8..]
+                                )
+                            } else {
+                                prev_hash.clone()
+                            };
+                            (Some(prev_hash.clone()), prev_hash, prev_short)
+                        } else {
+                            (None, String::new(), String::new())
+                        };
+
+                    (prev_opt, prev_full, prev_short, formatted)
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to decode bucket data: {}", e);
+                    (
+                        None,
+                        String::new(),
+                        String::new(),
+                        format!("Error decoding bucket data: {}", e),
+                    )
+                }
+            },
+            Err(e) => {
+                tracing::warn!("Failed to load bucket data from blobs: {}", e);
+                (
+                    None,
+                    String::new(),
+                    String::new(),
+                    format!("Error loading bucket data: {}", e),
+                )
+            }
+        };
+
     let template = BucketExplorerTemplate {
         bucket_id: bucket_id.to_string(),
         bucket_name: bucket.name,
+        bucket_link,
+        bucket_link_short,
+        previous_link,
+        previous_link_full,
+        previous_link_short,
+        bucket_data_formatted,
         current_path,
         path_segments,
         parent_path_url,
         items: display_items,
         read_only,
         api_url,
+        sync_status: status_text.to_string(),
+        sync_status_class: status_class.to_string(),
+        sync_error: bucket.sync_error.unwrap_or_default(),
     };
 
     template.into_response()

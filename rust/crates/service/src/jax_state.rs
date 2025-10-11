@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use flume::Sender;
 use std::collections::HashSet;
 use std::sync::{Arc, OnceLock};
 use uuid::Uuid;
@@ -9,6 +10,7 @@ use common::peer::{BlobsStore, BucketStateProvider, SyncStatus};
 
 use crate::database::models::Bucket;
 use crate::database::Database;
+use crate::sync_manager::SyncEvent;
 
 /// Maximum depth to traverse when checking bucket history
 const MAX_HISTORY_DEPTH: usize = 100;
@@ -21,6 +23,7 @@ const MAX_HISTORY_DEPTH: usize = 100;
 pub struct JaxState {
     database: Database,
     blobs: Arc<OnceLock<BlobsStore>>,
+    sync_sender: Arc<OnceLock<Sender<SyncEvent>>>,
 }
 
 impl std::fmt::Debug for JaxState {
@@ -28,6 +31,7 @@ impl std::fmt::Debug for JaxState {
         f.debug_struct("JaxState")
             .field("database", &self.database)
             .field("blobs", &"<OnceLock>")
+            .field("sync_sender", &"<OnceLock>")
             .finish()
     }
 }
@@ -37,6 +41,7 @@ impl JaxState {
         Self {
             database,
             blobs: Arc::new(OnceLock::new()),
+            sync_sender: Arc::new(OnceLock::new()),
         }
     }
 
@@ -44,8 +49,18 @@ impl JaxState {
         let _ = self.blobs.set(blobs);
     }
 
+    pub fn set_sync_sender(&self, sender: Sender<SyncEvent>) {
+        let _ = self.sync_sender.set(sender);
+    }
+
     fn blobs(&self) -> &BlobsStore {
         self.blobs.get().expect("BlobsStore must be set before use")
+    }
+
+    fn sync_sender(&self) -> &Sender<SyncEvent> {
+        self.sync_sender
+            .get()
+            .expect("SyncSender must be set before use")
     }
 
     /// Load a BucketData from a link
@@ -69,9 +84,21 @@ impl JaxState {
         let mut current = current_link.clone();
         let mut depth = 0;
 
+        tracing::info!(
+            "Checking if link {:?} is in history of {:?}",
+            target_link,
+            current_link
+        );
+
         seen_links.insert(current.clone());
 
         while depth < MAX_HISTORY_DEPTH {
+            tracing::info!(
+                "Checking if link {:?} is in history of {:?} -- depth: {}",
+                target_link,
+                current_link,
+                depth
+            );
             // Load the bucket data
             let bucket_data = match self.load_bucket_data(&current).await {
                 Ok(data) => data,
@@ -80,15 +107,20 @@ impl JaxState {
                     return Ok(Some(false));
                 }
             };
+            tracing::info!("Loaded bucket data @ {:?}", current);
 
             // Check if there's a previous version
             let Some(previous_link) = bucket_data.previous().clone() else {
+                tracing::info!("No more history after {:?}", current);
                 // No more history
                 return Ok(None);
             };
 
+            tracing::info!("Previous link: {:?}", previous_link);
+
             // Check if we've found the target
             if &previous_link == target_link {
+                tracing::info!("Found target link in history, we are ahead");
                 return Ok(Some(true));
             }
 
@@ -130,12 +162,42 @@ impl BucketStateProvider for JaxState {
 
         // Check if the target is in our history (target is behind)
         match self.is_link_in_history(&current_link, target_link).await? {
-            Some(true) => Ok(SyncStatus::Behind),
+            // we are ahead
+            Some(true) => Ok(SyncStatus::Ahead),
             _ => {
                 // Either not found or hit max depth
                 // In this case, we're unsynced
-                Ok(SyncStatus::Unsynced)
+                Ok(SyncStatus::Behind)
             }
         }
+    }
+
+    async fn get_bucket_link(&self, bucket_id: Uuid) -> Result<Option<Link>, anyhow::Error> {
+        // Get the bucket from the database
+        let bucket = Bucket::get_by_id(&bucket_id, &self.database).await?;
+
+        Ok(bucket.map(|b| b.link.into()))
+    }
+
+    async fn handle_announce(
+        &self,
+        bucket_id: Uuid,
+        peer_id: String,
+        new_link: Link,
+        previous_link: Option<Link>,
+    ) -> Result<(), anyhow::Error> {
+        // Send a PeerAnnounce event to the sync manager
+        let event = SyncEvent::PeerAnnounce {
+            bucket_id,
+            peer_id,
+            new_link,
+            previous_link,
+        };
+
+        self.sync_sender()
+            .send(event)
+            .map_err(|e| anyhow::anyhow!("Failed to send sync event: {}", e))?;
+
+        Ok(())
     }
 }

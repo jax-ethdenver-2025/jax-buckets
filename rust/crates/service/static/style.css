@@ -322,6 +322,27 @@ main {
     background-color: hsl(var(--primary) / 0.9);
 }
 
+.button-danger {
+    background-color: hsl(0, 84%, 60%);
+    color: white;
+    border-color: hsl(0, 84%, 60%);
+}
+
+.button-danger:hover {
+    background-color: hsl(0, 84%, 50%);
+    border-color: hsl(0, 84%, 50%);
+}
+
+.dark .button-danger {
+    background-color: hsl(0, 84%, 50%);
+    border-color: hsl(0, 84%, 50%);
+}
+
+.dark .button-danger:hover {
+    background-color: hsl(0, 84%, 40%);
+    border-color: hsl(0, 84%, 40%);
+}
+
 .button i {
     opacity: 0.8;
     font-size: 0.9em;
@@ -485,4 +506,128 @@ footer a:hover {
 
 .mr-2 {
     margin-right: 0.5rem;
-} 
+}
+
+/* Status badge colors */
+.status-synced {
+    background-color: hsl(142, 76%, 90%);
+    color: hsl(142, 76%, 25%);
+}
+
+.status-out-of-sync {
+    background-color: hsl(48, 100%, 90%);
+    color: hsl(48, 100%, 25%);
+}
+
+.status-syncing {
+    background-color: hsl(217, 91%, 90%);
+    color: hsl(217, 91%, 25%);
+}
+
+.status-failed {
+    background-color: hsl(0, 84%, 90%);
+    color: hsl(0, 84%, 35%);
+}
+
+/* Dark mode status badge colors */
+.dark .status-synced {
+    background-color: hsl(142, 76%, 15%);
+    color: hsl(142, 76%, 80%);
+}
+
+.dark .status-out-of-sync {
+    background-color: hsl(48, 100%, 15%);
+    color: hsl(48, 100%, 80%);
+}
+
+.dark .status-syncing {
+    background-color: hsl(217, 91%, 15%);
+    color: hsl(217, 91%, 80%);
+}
+
+.dark .status-failed {
+    background-color: hsl(0, 84%, 15%);
+    color: hsl(0, 84%, 80%);
+}
+
+/* Status badge sizing and layout */
+.status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+/* Error message styling */
+.error-message {
+    font-size: 0.75rem;
+    color: hsl(0, 84%, 40%);
+    margin-top: 0.25rem;
+}
+
+.dark .error-message {
+    color: hsl(0, 84%, 70%);
+}
+
+/* UIkit modal centering override */
+.uk-modal-dialog {
+    margin-top: 10vh !important;
+}
+
+.button-sm {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+}
+
+.mt-2 {
+    margin-top: 0.5rem;
+}
+
+.rounded {
+    border-radius: 0.25rem;
+}
+
+.px-3 {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+}
+
+.py-1 {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+}
+
+.px-2 {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+}
+
+.text-xs {
+    font-size: 0.75rem;
+    line-height: 1rem;
+}
+
+.text-red-600 {
+    color: hsl(0, 84%, 40%);
+}
+
+.dark .text-red-600 {
+    color: hsl(0, 84%, 70%);
+}
+
+.mt-1 {
+    margin-top: 0.25rem;
+}
+
+.mt-4 {
+    margin-top: 1rem;
+}
+
+.justify-end {
+    justify-content: flex-end;
+}
+
+.gap-4 {
+    gap: 1rem;
+}

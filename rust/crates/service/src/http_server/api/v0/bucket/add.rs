@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use common::prelude::{Link, Mount, MountError};
 
+use crate::sync_manager::SyncEvent;
 use crate::ServiceState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,7 +123,6 @@ pub async fn handler(
     // Clone for blocking task
     let blobs_clone = blobs.clone();
     let mount_path_clone = mount_path_buf.clone();
-    let secret_key_clone = secret_key.clone();
 
     // Run file operations in blocking task
     let (new_bucket_link, root_node_link) =
@@ -137,10 +137,10 @@ pub async fn handler(
 
                 // Save the mount (updates bucket in blobs)
                 tracing::info!("Saving mount");
-                let bucket_link = mount.save(&secret_key_clone, &blobs_clone).await?;
+                let bucket_link = mount.save(&blobs_clone).await?;
                 tracing::info!("Mount saved with new bucket link");
 
-                let root_link = mount.link();
+                let root_link = mount.root_link();
                 Ok((bucket_link, root_link))
             })
         })
@@ -152,6 +152,24 @@ pub async fn handler(
         .update_link(new_bucket_link.clone(), state.database())
         .await
         .map_err(|e| AddError::Database(e.to_string()))?;
+
+    // Trigger push sync to announce the new version to peers
+    tracing::debug!(
+        "Triggering push sync for bucket {} with new link {:?}",
+        bucket_id,
+        new_bucket_link
+    );
+    if let Err(e) = state.send_sync_event(SyncEvent::Push {
+        bucket_id,
+        new_link: new_bucket_link.clone(),
+    }) {
+        tracing::warn!(
+            "Failed to trigger push sync for bucket {}: {:?}",
+            bucket_id,
+            e
+        );
+        // Don't fail the request if sync event fails - the file was added successfully
+    }
 
     Ok((
         http::StatusCode::OK,

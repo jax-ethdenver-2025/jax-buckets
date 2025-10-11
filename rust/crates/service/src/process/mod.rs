@@ -13,6 +13,7 @@ use tracing_subscriber::{EnvFilter, Layer};
 const FINAL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
 use crate::http_server;
+use crate::sync_manager::SyncManager;
 use crate::{ServiceConfig, ServiceState};
 
 pub async fn spawn_service(service_config: &ServiceConfig) {
@@ -34,7 +35,7 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
     let (graceful_waiter, shutdown_rx) = utils::graceful_shutdown_blocker();
 
     let state = match ServiceState::from_config(service_config).await {
-        Ok(state) => state,
+        Ok(state) => std::sync::Arc::new(state),
         Err(e) => {
             tracing::error!("error creating server state: {}", e);
             std::process::exit(3);
@@ -42,6 +43,12 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
     };
 
     let mut handles = Vec::new();
+
+    // Create sync manager
+    let (sync_manager, sync_receiver) = SyncManager::new(state.clone());
+
+    // Set the sync sender in state so other parts can trigger sync operations
+    state.as_ref().set_sync_sender(sync_manager.sender());
 
     // Get listen addresses from config
     let html_listen_addr = service_config
@@ -52,7 +59,7 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
         .unwrap_or_else(|| SocketAddr::from_str("0.0.0.0:3000").unwrap());
 
     // Start HTML server
-    let html_state = state.clone();
+    let html_state = state.as_ref().clone();
     let api_url = format!("http://localhost:{}", api_listen_addr.port());
     let html_config = http_server::Config::new(html_listen_addr, Some(api_url));
     let html_rx = shutdown_rx.clone();
@@ -65,7 +72,7 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
     handles.push(html_handle);
 
     // Start API server
-    let api_state = state.clone();
+    let api_state = state.as_ref().clone();
     let api_config = http_server::Config::new(api_listen_addr, None);
     let api_rx = shutdown_rx.clone();
     let api_handle = tokio::spawn(async move {
@@ -87,6 +94,58 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
         }
     });
     handles.push(node_handle);
+
+    // Spawn sync manager
+    let sync_handle = tokio::spawn(async move {
+        sync_manager.run(sync_receiver).await;
+    });
+    handles.push(sync_handle);
+
+    // Spawn periodic sync checker
+    let periodic_state = state.clone();
+    let mut periodic_rx = shutdown_rx.clone();
+    let periodic_handle = tokio::spawn(async move {
+        use crate::database::models::Bucket as BucketModel;
+        use crate::sync_manager::SyncEvent;
+        use tokio::time::{interval, Duration};
+
+        let mut interval_timer = interval(Duration::from_secs(60)); // Check every 60 seconds
+        interval_timer.tick().await; // Skip first immediate tick
+
+        tracing::info!("Periodic sync checker started");
+
+        loop {
+            tokio::select! {
+                _ = interval_timer.tick() => {
+                    tracing::debug!("Running periodic sync check");
+
+                    // Get all buckets
+                    match BucketModel::list(None, None, periodic_state.database()).await {
+                        Ok(buckets) => {
+                            for bucket in buckets {
+                                tracing::debug!("Checking sync for bucket {}", bucket.id);
+
+                                // Trigger pull sync for each bucket
+                                if let Err(e) = periodic_state.send_sync_event(SyncEvent::Pull {
+                                    bucket_id: bucket.id,
+                                }) {
+                                    tracing::warn!("Failed to trigger periodic sync for bucket {}: {:?}", bucket.id, e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to list buckets for periodic sync: {}", e);
+                        }
+                    }
+                }
+                _ = periodic_rx.changed() => {
+                    tracing::info!("Periodic sync checker shutting down");
+                    break;
+                }
+            }
+        }
+    });
+    handles.push(periodic_handle);
 
     let _ = graceful_waiter.await;
 

@@ -40,6 +40,8 @@
                     <th>Name</th>
                     <th>Bucket ID</th>
                     <th>Created</th>
+                    <th>Status</th>
+                    <th>Last Sync</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -53,6 +55,18 @@
                     </td>
                     <td><code class="text-sm text-muted-foreground">{{ bucket.bucket_id }}</code></td>
                     <td class="text-sm text-muted-foreground">{{ bucket.created_at }}</td>
+                    <td>
+                        <span class="{{ bucket.sync_status_class }}"
+                              {% if !bucket.sync_error.is_empty() %}title="{{ bucket.sync_error }}"{% endif %}>
+                            {{ bucket.sync_status }}
+                        </span>
+                        {% if !bucket.sync_error.is_empty() %}
+                        <div class="error-message">{{ bucket.sync_error }}</div>
+                        {% endif %}
+                    </td>
+                    <td class="text-sm text-muted-foreground">
+                        {{ bucket.last_sync_attempt }}
+                    </td>
                     <td>
                         <a href="/buckets/{{ bucket.bucket_id }}" class="button button-sm">
                             <i class="fas fa-folder-open"></i> Browse

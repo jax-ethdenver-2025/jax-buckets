@@ -139,6 +139,10 @@ impl BucketData {
         Ok(())
     }
 
+    pub fn unset_shares(&mut self) {
+        self.shares.clear();
+    }
+
     pub fn id(&self) -> &Uuid {
         &self.id
     }
@@ -161,6 +165,10 @@ impl BucketData {
 
     pub fn set_pins(&mut self, pins_link: Link) {
         self.pins = Some(pins_link);
+    }
+
+    pub fn set_previous(&mut self, previous: Link) {
+        self.previous = Some(previous);
     }
 
     pub fn previous(&self) -> &Option<Link> {

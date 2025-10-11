@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE buckets\n            SET sync_status = $1, last_sync_attempt = CURRENT_TIMESTAMP, sync_error = $2\n            WHERE id = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "62160f6949083df09d18809db9294b89308f66ff3830120db247fdc3b0af6fc3"
+}

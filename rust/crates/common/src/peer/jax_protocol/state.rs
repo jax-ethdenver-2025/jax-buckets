@@ -24,4 +24,20 @@ pub trait BucketStateProvider: Send + Sync + std::fmt::Debug {
         bucket_id: Uuid,
         target_link: &Link,
     ) -> Result<SyncStatus, anyhow::Error>;
+
+    /// Get the current link for a bucket
+    ///
+    /// Returns None if the bucket doesn't exist
+    async fn get_bucket_link(&self, bucket_id: Uuid) -> Result<Option<Link>, anyhow::Error>;
+
+    /// Handle an incoming announce message from a peer
+    ///
+    /// This should trigger a sync event to process the announced update
+    async fn handle_announce(
+        &self,
+        bucket_id: Uuid,
+        peer_id: String,
+        new_link: Link,
+        previous_link: Option<Link>,
+    ) -> Result<(), anyhow::Error>;
 }

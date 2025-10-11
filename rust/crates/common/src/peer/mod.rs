@@ -11,7 +11,10 @@ mod blobs_store;
 pub mod jax_protocol;
 
 pub use blobs_store::{BlobsStore, BlobsStoreError};
-pub use jax_protocol::{ping_peer, BucketStateProvider, JaxProtocol, PingRequest, PingResponse, SyncStatus, JAX_ALPN};
+pub use jax_protocol::{
+    announce_to_peer, fetch_bucket, ping_peer, BucketStateProvider, JaxProtocol, PingRequest,
+    PingResponse, SyncStatus, JAX_ALPN,
+};
 
 // Re-export iroh types for convenience
 pub use iroh::NodeAddr;
@@ -163,8 +166,8 @@ impl Peer {
         // Build the router against the endpoint -> to our blobs service
         //  NOTE (amiller68): if you want to extend our iroh capabilities
         //   with more protocols and handlers, you'd do so here
-        let mut router_builder = Router::builder(self.endpoint.clone())
-            .accept(iroh_blobs::ALPN, inner_blobs);
+        let mut router_builder =
+            Router::builder(self.endpoint.clone()).accept(iroh_blobs::ALPN, inner_blobs);
 
         // If we have protocol state, register the JAX protocol
         if let Some(state) = &self.protocol_state {
