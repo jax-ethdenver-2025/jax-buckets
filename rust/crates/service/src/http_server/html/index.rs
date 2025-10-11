@@ -1,21 +1,26 @@
 use askama::Template;
 use askama_axum::IntoResponse;
+use axum::extract::State;
 use tracing::instrument;
+
+use crate::ServiceState;
 
 #[derive(Template)]
 #[template(path = "index.html")]
 pub struct IndexTemplate {
     pub node_id: String,
-    pub eth_address: String,
-    pub eth_balance: String,
+    pub blobs_path: String,
 }
 
-#[instrument]
-pub async fn handler() -> askama_axum::Response {
+#[instrument(skip(state))]
+pub async fn handler(State(state): State<ServiceState>) -> askama_axum::Response {
+    let node = state.node();
+    let node_id = node.id().to_string();
+    let blobs_path = node.blobs_store_path().display().to_string();
+
     let template = IndexTemplate {
-        node_id: "test-node-123".to_string(),
-        eth_address: "0x1234567890abcdef".to_string(),
-        eth_balance: "1000000000000000000".to_string(), // 1 ETH in wei
+        node_id,
+        blobs_path,
     };
 
     template.into_response()

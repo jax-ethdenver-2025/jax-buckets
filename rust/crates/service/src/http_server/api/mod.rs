@@ -1,5 +1,5 @@
 use axum::Router;
-use http::header::{ACCEPT, ORIGIN};
+use http::header::{ACCEPT, CONTENT_TYPE, ORIGIN};
 use http::Method;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -10,8 +10,8 @@ use crate::ServiceState;
 
 pub fn router(state: ServiceState) -> Router<ServiceState> {
     let cors_layer = CorsLayer::new()
-        .allow_methods(vec![Method::GET])
-        .allow_headers(vec![ACCEPT, ORIGIN])
+        .allow_methods(vec![Method::GET, Method::POST])
+        .allow_headers(vec![ACCEPT, CONTENT_TYPE, ORIGIN])
         .allow_origin(Any)
         .allow_credentials(false);
 

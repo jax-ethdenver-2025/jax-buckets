@@ -2,7 +2,6 @@ use std::ops::Deref;
 
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use iroh::{PublicKey as PPublicKey, SecretKey as SSecretKey};
-use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
 
@@ -135,9 +134,9 @@ impl SecretKey {
     //  kinda useless since we get them for free through the deref
     //  ... but fine for now
     pub fn generate() -> Self {
-        let mut rng = OsRng;
-        let signing_key = SSecretKey::generate(&mut rng);
-        Self(signing_key)
+        let mut bytes = [0u8; PRIVATE_KEY_SIZE];
+        getrandom::getrandom(&mut bytes).expect("failed to generate random bytes");
+        Self::from(bytes)
     }
 
     pub fn public(&self) -> PublicKey {
@@ -150,6 +149,33 @@ impl SecretKey {
 
     pub fn to_hex(&self) -> String {
         hex::encode(self.to_bytes())
+    }
+
+    pub fn to_pem(&self) -> String {
+        let pem = pem::Pem::new("PRIVATE KEY", self.to_bytes());
+        pem::encode(&pem)
+    }
+
+    pub fn from_pem(pem_str: &str) -> Result<Self, KeyError> {
+        let pem = pem::parse(pem_str).map_err(|e| anyhow::anyhow!("failed to parse PEM: {}", e))?;
+
+        if pem.tag() != "PRIVATE KEY" {
+            return Err(anyhow::anyhow!("invalid PEM tag, expected PRIVATE KEY").into());
+        }
+
+        let contents = pem.contents();
+        if contents.len() != PRIVATE_KEY_SIZE {
+            return Err(anyhow::anyhow!(
+                "invalid private key size in PEM, expected {}, got {}",
+                PRIVATE_KEY_SIZE,
+                contents.len()
+            )
+            .into());
+        }
+
+        let mut bytes = [0u8; PRIVATE_KEY_SIZE];
+        bytes.copy_from_slice(contents);
+        Ok(Self::from(bytes))
     }
 
     // Convert Ed25519 private key to X25519 private key for ECDH
@@ -179,5 +205,21 @@ mod test {
         let public_hex = public_key.to_hex();
         let recovered_public = PublicKey::from_hex(&public_hex).unwrap();
         assert_eq!(public_key.to_bytes(), recovered_public.to_bytes());
+    }
+
+    #[test]
+    fn test_pem_serialization() {
+        let private_key = SecretKey::generate();
+
+        // Test round-trip PEM conversion
+        let pem = private_key.to_pem();
+        let recovered_private = SecretKey::from_pem(&pem).unwrap();
+        assert_eq!(private_key.to_bytes(), recovered_private.to_bytes());
+
+        // Verify the recovered key can produce the same public key
+        assert_eq!(
+            private_key.public().to_bytes(),
+            recovered_private.public().to_bytes()
+        );
     }
 }

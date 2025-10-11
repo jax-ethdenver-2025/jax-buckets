@@ -8,11 +8,19 @@ use tokio::sync::watch::Receiver as WatchReceiver;
 use crate::crypto::SecretKey;
 
 mod blobs_store;
+pub mod jax_protocol;
 
 pub use blobs_store::{BlobsStore, BlobsStoreError};
+pub use jax_protocol::{
+    announce_to_peer, fetch_bucket, ping_peer, BucketStateProvider, JaxProtocol, PingRequest,
+    PingResponse, SyncStatus, JAX_ALPN,
+};
 
-#[derive(Debug, Clone, Default)]
-pub struct NodeBuilder {
+// Re-export iroh types for convenience
+pub use iroh::NodeAddr;
+
+#[derive(Clone, Default)]
+pub struct PeerBuilder {
     /// the socket addr to expose the peer on
     ///  if not set, an ephemeral port will be used
     socket_addr: Option<SocketAddr>,
@@ -24,15 +32,18 @@ pub struct NodeBuilder {
     /// the path to the blobs store on the peer's filesystem
     ///  if not set a temporary directory will be used
     blobs_store_path: Option<PathBuf>,
+    /// optional state provider for the JAX protocol
+    protocol_state: Option<std::sync::Arc<dyn BucketStateProvider>>,
 }
 
 // TODO (amiller68): proper errors
-impl NodeBuilder {
+impl PeerBuilder {
     pub fn new() -> Self {
-        NodeBuilder {
+        PeerBuilder {
             socket_addr: None,
             secret_key: None,
             blobs_store_path: None,
+            protocol_state: None,
         }
     }
 
@@ -51,7 +62,12 @@ impl NodeBuilder {
         self
     }
 
-    pub async fn build(self) -> Node {
+    pub fn protocol_state(mut self, state: std::sync::Arc<dyn BucketStateProvider>) -> Self {
+        self.protocol_state = Some(state);
+        self
+    }
+
+    pub async fn build(self) -> Peer {
         // set the socket port to unspecified if not set
         let socket_addr = self
             .socket_addr
@@ -86,39 +102,41 @@ impl NodeBuilder {
         // Create the endpoint with our key and discovery
         let endpoint = Endpoint::builder()
             .secret_key(secret_key.0.clone())
-            .discovery(Box::new(mainline_discovery))
+            .discovery(mainline_discovery)
             .bind_addr_v4(addr)
             .bind()
             .await
             .expect("failed to bind ephemeral endpoint");
 
         // Create the blob store
-        let blob_store = BlobsStore::load(&blobs_store_path, endpoint.clone())
+        let blob_store = BlobsStore::load(&blobs_store_path)
             .await
             .expect("failed to load blob store");
 
-        Node {
+        Peer {
             blob_store,
             secret: secret_key,
             endpoint,
             blobs_store_path,
+            protocol_state: self.protocol_state,
         }
     }
 }
 
 // TODO (amiller68): this can prolly be simpler /
 //  idk if we need all of this, but it'll work for now
-#[derive(Debug, Clone)]
-pub struct Node {
+#[derive(Clone)]
+pub struct Peer {
     blob_store: BlobsStore,
     secret: SecretKey,
     endpoint: Endpoint,
     blobs_store_path: PathBuf,
+    protocol_state: Option<std::sync::Arc<dyn BucketStateProvider>>,
 }
 
-impl Node {
-    pub fn builder() -> NodeBuilder {
-        NodeBuilder::default()
+impl Peer {
+    pub fn builder() -> PeerBuilder {
+        PeerBuilder::default()
     }
 
     pub fn id(&self) -> NodeId {
@@ -137,15 +155,28 @@ impl Node {
         &self.blobs_store_path
     }
 
+    pub fn endpoint(&self) -> &Endpoint {
+        &self.endpoint
+    }
+
     pub async fn spawn(&self, mut shutdown_rx: WatchReceiver<()>) -> anyhow::Result<()> {
         // clone the blob store inner for the router
         let inner_blobs = self.blob_store.inner.clone();
+
         // Build the router against the endpoint -> to our blobs service
         //  NOTE (amiller68): if you want to extend our iroh capabilities
         //   with more protocols and handlers, you'd do so here
-        let router = Router::builder(self.endpoint.clone())
-            .accept(iroh_blobs::ALPN, inner_blobs)
-            .spawn();
+        let mut router_builder =
+            Router::builder(self.endpoint.clone()).accept(iroh_blobs::ALPN, inner_blobs);
+
+        // If we have protocol state, register the JAX protocol
+        if let Some(state) = &self.protocol_state {
+            let jax_protocol = JaxProtocol::new(state.clone());
+            router_builder = router_builder.accept(JAX_ALPN, jax_protocol);
+            tracing::info!("JAX protocol registered");
+        }
+
+        let router = router_builder.spawn();
 
         // Wait for shutdown signal
         let _ = shutdown_rx.changed().await;

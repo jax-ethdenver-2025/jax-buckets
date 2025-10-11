@@ -1,14 +1,19 @@
+use std::sync::{Arc, OnceLock};
 use url::Url;
 
 use super::config::Config;
 use super::database::{Database, DatabaseSetupError};
+use super::jax_state::JaxState;
+use super::sync_manager::SyncEvent;
 
 use common::prelude::*;
 
 #[derive(Clone)]
 pub struct State {
-    node: Node,
+    node: Peer,
     database: Database,
+    jax_state: Arc<JaxState>,
+    sync_sender: Arc<OnceLock<flume::Sender<SyncEvent>>>,
 }
 
 impl State {
@@ -29,8 +34,14 @@ impl State {
         tracing::info!("Database URL: {:?}", sqlite_database_url);
         let database = Database::connect(&sqlite_database_url).await?;
 
-        // build our node
-        let mut node_builder = Node::builder();
+        // Create JAX protocol state first
+        // Note: JaxState doesn't need blobs store at construction time,
+        // only when check_bucket_sync is called
+        let jax_state = Arc::new(JaxState::new(database.clone()));
+
+        // build our node with the protocol state
+        let mut node_builder = Peer::builder().protocol_state(jax_state.clone());
+
         // set the socket addr if specified
         if config.node_listen_addr.is_some() {
             node_builder = node_builder.socket_addr(config.node_listen_addr.unwrap());
@@ -44,24 +55,53 @@ impl State {
             node_builder =
                 node_builder.blobs_store_path(config.node_blobs_store_path.clone().unwrap());
         }
-        // build the node
-        let node = node_builder.build().await;
-        tracing::info!("Node id: {}", node.id());
 
-        Ok(Self { node, database })
+        // Build the node once with protocol state
+        let node = node_builder.build().await;
+        tracing::info!("Node id: {} (with JAX protocol)", node.id());
+
+        // Now that the node is built, set the blobs store in JaxState
+        jax_state.set_blobs(node.blobs().clone());
+
+        Ok(Self {
+            node,
+            database,
+            jax_state,
+            sync_sender: Arc::new(OnceLock::new()),
+        })
     }
 
-    pub fn node(&self) -> &Node {
+    pub fn node(&self) -> &Peer {
         &self.node
     }
 
     pub fn database(&self) -> &Database {
         &self.database
     }
+
+    pub fn jax_state(&self) -> &Arc<JaxState> {
+        &self.jax_state
+    }
+
+    /// Set the sync event sender (called once during initialization)
+    pub fn set_sync_sender(&self, sender: flume::Sender<SyncEvent>) {
+        let _ = self.sync_sender.set(sender.clone());
+        // Also set it on jax_state so the protocol handler can trigger sync events
+        self.jax_state.set_sync_sender(sender);
+    }
+
+    /// Send a sync event to the sync manager
+    pub fn send_sync_event(&self, event: SyncEvent) -> Result<(), SyncEventError> {
+        let sender = self
+            .sync_sender
+            .get()
+            .ok_or(SyncEventError::SyncManagerNotInitialized)?;
+        sender.send(event).map_err(|_| SyncEventError::SendFailed)
+    }
 }
 
-impl AsRef<Node> for State {
-    fn as_ref(&self) -> &Node {
+impl AsRef<Peer> for State {
+    fn as_ref(&self) -> &Peer {
         &self.node
     }
 }
@@ -80,4 +120,12 @@ pub enum StateSetupError {
     DatabaseSetupError(#[from] DatabaseSetupError),
     #[error("Invalid database URL")]
     InvalidDatabaseUrl,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SyncEventError {
+    #[error("Sync manager not initialized")]
+    SyncManagerNotInitialized,
+    #[error("Failed to send sync event")]
+    SendFailed,
 }

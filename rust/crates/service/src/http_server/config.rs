@@ -1,24 +1,26 @@
 use std::net::SocketAddr;
-use std::str::FromStr;
 
 use url::Url;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Config {
     // Listen address
     pub listen_addr: SocketAddr,
     // Host name for generating content URLs
     pub hostname: Url,
-
+    // API server URL (for HTML server to reference)
+    pub api_url: Option<String>,
     // log level for http tracing
     pub log_level: tracing::Level,
 }
 
-impl Default for Config {
-    fn default() -> Self {
+impl Config {
+    pub fn new(listen_addr: SocketAddr, api_url: Option<String>) -> Self {
+        let hostname = Url::parse(&format!("http://localhost:{}", listen_addr.port())).unwrap();
         Self {
-            listen_addr: SocketAddr::from_str("127.0.0.1:3000").unwrap(),
-            hostname: Url::parse("http://localhost:3000").unwrap(),
+            listen_addr,
+            hostname,
+            api_url,
             log_level: tracing::Level::INFO,
         }
     }

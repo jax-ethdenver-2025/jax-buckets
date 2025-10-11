@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}{{ bucket_name }} - Pins - Jax{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+    <!-- Breadcrumb navigation -->
+    <nav aria-label="Breadcrumb">
+        <ol class="flex items-center gap-2 text-sm">
+            <li><a href="/buckets" class="text-primary hover:underline">Buckets</a></li>
+            <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
+            <li><a href="/buckets/{{ bucket_id }}" class="text-primary hover:underline">{{ bucket_name }}</a></li>
+            <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
+            <li class="text-muted-foreground">Pins</li>
+        </ol>
+    </nav>
+
+    <div class="flex justify-between items-center">
+        <h1 class="text-3xl font-bold">
+            <i class="fas fa-thumbtack mr-2"></i>Bucket Pins
+        </h1>
+        <div class="flex gap-2">
+            <a href="/buckets/{{ bucket_id }}" class="button">
+                <i class="fas fa-arrow-left"></i> Back to Bucket
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats card -->
+    <div class="card">
+        <div class="p-6">
+            <div class="flex items-center gap-4">
+                <div class="text-4xl">
+                    <i class="fas fa-thumbtack text-primary"></i>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold">{{ total_pins }}</div>
+                    <div class="text-sm text-muted-foreground">Pinned Hashes</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if pins.is_empty() %}
+    <div class="card">
+        <div class="p-8 text-center text-muted-foreground">
+            <i class="fas fa-thumbtack text-4xl mb-4"></i>
+            <p>No pins yet</p>
+            <p class="text-sm">Pins will appear as you add content to the bucket</p>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="p-4 border-b">
+            <h2 class="text-lg font-semibold">Pinned Hashes</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="uk-table uk-table-divider uk-table-hover uk-table-small">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Hash</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pin in pins %}
+                    <tr>
+                        <td class="text-muted-foreground">{{ loop.index }}</td>
+                        <td>
+                            <code class="text-xs bg-muted px-2 py-1 rounded">{{ pin.hash }}</code>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

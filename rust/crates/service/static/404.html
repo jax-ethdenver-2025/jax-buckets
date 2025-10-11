@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 - Page Not Found | Jax</title>
+
+    <!-- Inter font -->
+    <link rel="preconnect" href="https://rsms.me/" />
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+
+    <style>
+      :root {
+        font-family: Inter, sans-serif;
+        font-feature-settings: "liga" 1, "calt" 1;
+      }
+      @supports (font-variation-settings: normal) {
+        :root {
+          font-family: InterVariable, sans-serif;
+        }
+      }
+    </style>
+
+    <!-- Franken UI -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/css/core.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/css/utilities.min.css" />
+
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+
+    <!-- Custom styles -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-background text-foreground flex flex-col min-h-screen">
+    <nav class="border-b bg-background">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex justify-between items-center">
+                <a href="/" class="flex items-center gap-2 text-primary font-bold text-xl text-decoration-none">
+                    <i class="fas fa-database"></i>
+                    <span>jax</span>
+                </a>
+                <div class="flex gap-6">
+                    <a href="/buckets" class="text-foreground hover:text-primary transition-colors text-decoration-none">Buckets</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-1 flex items-center justify-center p-8">
+        <div class="max-w-2xl mx-auto text-center space-y-6">
+            <div class="text-primary">
+                <i class="fas fa-exclamation-triangle text-8xl mb-4"></i>
+            </div>
+
+            <h1 class="text-6xl font-bold">404</h1>
+
+            <h2 class="text-3xl font-semibold text-muted-foreground">Page Not Found</h2>
+
+            <p class="text-lg text-muted-foreground">
+                The page you're looking for doesn't exist or has been moved.
+            </p>
+
+            <div class="flex gap-4 justify-center pt-4">
+                <a href="/" class="button button-primary">
+                    <i class="fas fa-home"></i> Go Home
+                </a>
+                <a href="/buckets" class="button">
+                    <i class="fas fa-folder"></i> Browse Buckets
+                </a>
+            </div>
+        </div>
+    </main>
+
+    <footer class="border-t bg-background mt-auto">
+        <div class="container mx-auto px-4 py-6">
+            <div class="flex justify-between items-center text-sm text-muted-foreground">
+                <p>&copy; 2025 jax protocol</p>
+                <div class="flex gap-6">
+                    <a href="#" class="hover:text-primary transition-colors text-decoration-none">Terms</a>
+                    <a href="#" class="hover:text-primary transition-colors text-decoration-none">Privacy</a>
+                    <a href="#" class="hover:text-primary transition-colors text-decoration-none">Docs</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

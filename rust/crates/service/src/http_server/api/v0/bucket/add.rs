@@ -1,13 +1,13 @@
-use axum::extract::{Json, State};
+use axum::extract::{Multipart, State};
 use axum::response::{IntoResponse, Response};
-use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
+use std::io::Cursor;
 use std::path::PathBuf;
 use uuid::Uuid;
 
 use common::prelude::{Link, Mount, MountError};
 
-use crate::http_server::api::client::ApiRequest;
+use crate::sync_manager::SyncEvent;
 use crate::ServiceState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,10 +16,6 @@ pub struct AddRequest {
     /// Bucket ID to add file to
     #[cfg_attr(feature = "clap", arg(long))]
     pub bucket_id: Uuid,
-
-    /// Absolute path to file on filesystem
-    #[cfg_attr(feature = "clap", arg(long))]
-    pub path: String,
 
     /// Path in bucket where file should be mounted
     #[cfg_attr(feature = "clap", arg(long))]
@@ -31,50 +27,89 @@ pub struct AddResponse {
     pub mount_path: String,
     pub link: Link,
     pub bucket_link: Link,
+    pub mime_type: String,
 }
 
 #[axum::debug_handler]
 pub async fn handler(
     State(state): State<ServiceState>,
-    Json(req): Json<AddRequest>,
+    mut multipart: Multipart,
 ) -> Result<impl IntoResponse, AddError> {
     use crate::database::models::Bucket as BucketModel;
 
-    // Validate paths
-    let fs_path = PathBuf::from(&req.path);
-    tracing::info!("Validating path: {}", fs_path.display());
-    if !fs_path.is_absolute() {
-        tracing::error!("Path must be absolute");
-        return Err(AddError::InvalidPath("Path must be absolute".into()));
-    }
-    tracing::info!("Path is absolute");
-    if !fs_path.exists() {
-        tracing::error!("Path does not exist");
-        return Err(AddError::PathNotFound(req.path.clone()));
-    }
-    tracing::info!("Path exists");
-    if !fs_path.is_file() {
-        tracing::error!("Path must be a file");
-        return Err(AddError::InvalidPath("Path must be a file".into()));
+    let mut bucket_id: Option<Uuid> = None;
+    let mut mount_path: Option<String> = None;
+    let mut file_data: Option<Vec<u8>> = None;
+
+    // Parse multipart form data
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AddError::MultipartError(e.to_string()))?
+    {
+        let field_name = field.name().unwrap_or("").to_string();
+
+        match field_name.as_str() {
+            "bucket_id" => {
+                let text = field
+                    .text()
+                    .await
+                    .map_err(|e| AddError::MultipartError(e.to_string()))?;
+                bucket_id = Some(
+                    Uuid::parse_str(&text)
+                        .map_err(|_| AddError::InvalidRequest("Invalid bucket_id".into()))?,
+                );
+            }
+            "mount_path" => {
+                mount_path = Some(
+                    field
+                        .text()
+                        .await
+                        .map_err(|e| AddError::MultipartError(e.to_string()))?,
+                );
+            }
+            "file" => {
+                file_data = Some(
+                    field
+                        .bytes()
+                        .await
+                        .map_err(|e| AddError::MultipartError(e.to_string()))?
+                        .to_vec(),
+                );
+            }
+            _ => {}
+        }
     }
 
-    let mount_path = PathBuf::from(&req.mount_path);
-    tracing::info!("Validating mount path: {}", mount_path.display());
-    if !mount_path.is_absolute() {
-        tracing::error!("Mount path must be absolute");
+    let bucket_id =
+        bucket_id.ok_or_else(|| AddError::InvalidRequest("bucket_id is required".into()))?;
+    let mount_path =
+        mount_path.ok_or_else(|| AddError::InvalidRequest("mount_path is required".into()))?;
+    let file_data = file_data.ok_or_else(|| AddError::InvalidRequest("file is required".into()))?;
+
+    // Validate mount path
+    let mount_path_buf = PathBuf::from(&mount_path);
+    if !mount_path_buf.is_absolute() {
         return Err(AddError::InvalidPath("Mount path must be absolute".into()));
     }
 
+    // Detect MIME type from file extension
+    let mime_type = mime_guess::from_path(&mount_path_buf)
+        .first_or_octet_stream()
+        .to_string();
+
+    tracing::info!(
+        "Adding file to bucket {} at {} ({})",
+        bucket_id,
+        mount_path,
+        mime_type
+    );
+
     // Get bucket from database
-    let bucket = BucketModel::get_by_id(&req.bucket_id, state.database())
+    let bucket = BucketModel::get_by_id(&bucket_id, state.database())
         .await
         .map_err(|e| AddError::Database(e.to_string()))?
-        .ok_or_else(|| AddError::BucketNotFound(req.bucket_id))?;
-
-    tracing::info!("Bucket loaded");
-    tracing::info!("Bucket ID: {}", bucket.id);
-    tracing::info!("Bucket name: {}", bucket.name);
-    tracing::info!("Bucket link: {:?}", bucket.link);
+        .ok_or_else(|| AddError::BucketNotFound(bucket_id))?;
 
     // Load mount
     let bucket_link: Link = bucket.link.into();
@@ -85,45 +120,64 @@ pub async fn handler(
 
     tracing::info!("Mount loaded");
 
-    // Clone blobs for the blocking task
+    // Clone for blocking task
     let blobs_clone = blobs.clone();
-    let fs_path_clone = fs_path.clone();
-    let mount_path_clone = mount_path.clone();
+    let mount_path_clone = mount_path_buf.clone();
 
-    tracing::info!("Mount path: {:?}", mount_path_clone);
-    tracing::info!("fs path: {:?}", fs_path_clone);
+    // Run file operations in blocking task
+    let (new_bucket_link, root_node_link) =
+        tokio::task::spawn_blocking(move || -> Result<(Link, Link), MountError> {
+            // Create a cursor from the file data
+            let cursor = Cursor::new(file_data);
 
-    // Run file operations in blocking task to avoid Send issues
-    let updated_link = tokio::task::spawn_blocking(move || -> Result<Link, MountError> {
-        // Read file from filesystem
-        let file = std::fs::File::open(&fs_path_clone)
-            .map_err(|e| MountError::Default(anyhow::anyhow!(e)))?;
+            tokio::runtime::Handle::current().block_on(async {
+                tracing::info!("Adding file to mount");
+                mount.add(&mount_path_clone, cursor, &blobs_clone).await?;
+                tracing::info!("File added to mount");
 
-        tracing::info!("File opened");
+                // Save the mount (updates bucket in blobs)
+                tracing::info!("Saving mount");
+                let bucket_link = mount.save(&blobs_clone).await?;
+                tracing::info!("Mount saved with new bucket link");
 
-        // Add file to mount (this is a blocking operation)
-        tokio::runtime::Handle::current().block_on(async {
-            tracing::info!("Adding file to mount");
-            mount.add(&mount_path_clone, file, &blobs_clone).await?;
-            tracing::info!("File added to mount");
-            Ok(mount.inner().link().clone())
+                let root_link = mount.root_link();
+                Ok((bucket_link, root_link))
+            })
         })
-    })
-    .await
-    .map_err(|e| AddError::Mount(MountError::Default(anyhow::anyhow!(e))))??;
+        .await
+        .map_err(|e| AddError::Mount(MountError::Default(anyhow::anyhow!(e))))??;
 
-    // Update bucket in database
+    // Update bucket link in database
     bucket
-        .update_link(updated_link.clone(), state.database())
+        .update_link(new_bucket_link.clone(), state.database())
         .await
         .map_err(|e| AddError::Database(e.to_string()))?;
 
+    // Trigger push sync to announce the new version to peers
+    tracing::debug!(
+        "Triggering push sync for bucket {} with new link {:?}",
+        bucket_id,
+        new_bucket_link
+    );
+    if let Err(e) = state.send_sync_event(SyncEvent::Push {
+        bucket_id,
+        new_link: new_bucket_link.clone(),
+    }) {
+        tracing::warn!(
+            "Failed to trigger push sync for bucket {}: {:?}",
+            bucket_id,
+            e
+        );
+        // Don't fail the request if sync event fails - the file was added successfully
+    }
+
     Ok((
         http::StatusCode::OK,
-        Json(AddResponse {
-            mount_path: req.mount_path,
-            link: updated_link.clone(),
-            bucket_link: updated_link,
+        axum::Json(AddResponse {
+            mount_path,
+            link: root_node_link,
+            bucket_link: new_bucket_link,
+            mime_type,
         }),
     )
         .into_response())
@@ -135,12 +189,12 @@ pub enum AddError {
     BucketNotFound(Uuid),
     #[error("Invalid path: {0}")]
     InvalidPath(String),
-    #[error("Path not found: {0}")]
-    PathNotFound(String),
+    #[error("Invalid request: {0}")]
+    InvalidRequest(String),
+    #[error("Multipart error: {0}")]
+    MultipartError(String),
     #[error("Database error: {0}")]
     Database(String),
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
     #[error("Mount error: {0}")]
     Mount(#[from] MountError),
 }
@@ -153,31 +207,18 @@ impl IntoResponse for AddError {
                 format!("Bucket not found: {}", id),
             )
                 .into_response(),
-            AddError::InvalidPath(msg) => (
+            AddError::InvalidPath(msg)
+            | AddError::InvalidRequest(msg)
+            | AddError::MultipartError(msg) => (
                 http::StatusCode::BAD_REQUEST,
-                format!("Invalid path: {}", msg),
+                format!("Bad request: {}", msg),
             )
                 .into_response(),
-            AddError::PathNotFound(path) => (
-                http::StatusCode::NOT_FOUND,
-                format!("Path not found: {}", path),
-            )
-                .into_response(),
-            AddError::Database(_) | AddError::Io(_) | AddError::Mount(_) => (
+            AddError::Database(_) | AddError::Mount(_) => (
                 http::StatusCode::INTERNAL_SERVER_ERROR,
                 "Unexpected error".to_string(),
             )
                 .into_response(),
         }
-    }
-}
-
-// Client implementation - builds request for this operation
-impl ApiRequest for AddRequest {
-    type Response = AddResponse;
-
-    fn build_request(self, base_url: &Url, client: &Client) -> RequestBuilder {
-        let full_url = base_url.join("/api/v0/bucket/add").unwrap();
-        client.post(full_url).json(&self)
     }
 }

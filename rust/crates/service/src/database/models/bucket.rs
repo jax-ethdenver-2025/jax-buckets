@@ -6,6 +6,28 @@ use crate::database::{types::DCid, Database};
 
 use common::prelude::Link;
 
+/// Sync status of a bucket
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::Type)]
+#[sqlx(type_name = "TEXT")]
+#[sqlx(rename_all = "lowercase")]
+pub enum SyncStatus {
+    Synced,
+    OutOfSync,
+    Syncing,
+    Failed,
+}
+
+impl std::fmt::Display for SyncStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SyncStatus::Synced => write!(f, "synced"),
+            SyncStatus::OutOfSync => write!(f, "out_of_sync"),
+            SyncStatus::Syncing => write!(f, "syncing"),
+            SyncStatus::Failed => write!(f, "failed"),
+        }
+    }
+}
+
 #[derive(FromRow, Debug, Clone)]
 pub struct Bucket {
     pub id: Uuid,
@@ -14,6 +36,9 @@ pub struct Bucket {
     pub created_at: OffsetDateTime,
     #[allow(dead_code)]
     pub updated_at: OffsetDateTime,
+    pub sync_status: SyncStatus,
+    pub last_sync_attempt: Option<OffsetDateTime>,
+    pub sync_error: Option<String>,
 }
 
 impl Bucket {
@@ -27,9 +52,9 @@ impl Bucket {
         let bucket = sqlx::query_as!(
             Bucket,
             r#"
-            INSERT INTO buckets (id, name, link, created_at, updated_at)
-            VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            RETURNING id as "id!: Uuid", name as "name!", link as "link!: DCid", created_at as "created_at!", updated_at as "updated_at!"
+            INSERT INTO buckets (id, name, link, created_at, updated_at, sync_status, last_sync_attempt, sync_error)
+            VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'synced', NULL, NULL)
+            RETURNING id as "id!: Uuid", name as "name!", link as "link!: DCid", created_at as "created_at!", updated_at as "updated_at!", sync_status as "sync_status!: SyncStatus", last_sync_attempt as "last_sync_attempt: OffsetDateTime", sync_error as "sync_error: String"
             "#,
             id,
             name,
@@ -78,11 +103,56 @@ impl Bucket {
         Ok(())
     }
 
+    /// Update sync status, last_sync_attempt, and sync_error
+    pub async fn update_sync_status(
+        &self,
+        sync_status: SyncStatus,
+        sync_error: Option<String>,
+        db: &Database,
+    ) -> Result<(), BucketError> {
+        sqlx::query!(
+            r#"
+            UPDATE buckets
+            SET sync_status = $1, last_sync_attempt = CURRENT_TIMESTAMP, sync_error = $2
+            WHERE id = $3
+            "#,
+            sync_status,
+            sync_error,
+            self.id
+        )
+        .execute(&**db)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Update link and mark as synced
+    pub async fn update_link_and_sync(
+        &self,
+        new_link: Link,
+        db: &Database,
+    ) -> Result<(), BucketError> {
+        let dcid: DCid = new_link.into();
+        sqlx::query!(
+            r#"
+            UPDATE buckets
+            SET link = $1, updated_at = CURRENT_TIMESTAMP, sync_status = 'synced', last_sync_attempt = CURRENT_TIMESTAMP, sync_error = NULL
+            WHERE id = $2
+            "#,
+            dcid,
+            self.id
+        )
+        .execute(&**db)
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn get_by_id(id: &Uuid, db: &Database) -> Result<Option<Bucket>, BucketError> {
         let bucket = sqlx::query_as!(
             Bucket,
             r#"
-            SELECT id as "id!: Uuid", name as "name!", link as "link!: DCid", created_at as "created_at!", updated_at as "updated_at!"
+            SELECT id as "id!: Uuid", name as "name!", link as "link!: DCid", created_at as "created_at!", updated_at as "updated_at!", sync_status as "sync_status!: SyncStatus", last_sync_attempt as "last_sync_attempt: OffsetDateTime", sync_error as "sync_error: String"
             FROM buckets
             WHERE id = $1
             "#,
@@ -106,7 +176,7 @@ impl Bucket {
             sqlx::query_as!(
                 Bucket,
                 r#"
-                SELECT id as "id!: Uuid", name as "name!", link as "link!: DCid", created_at as "created_at!", updated_at as "updated_at!"
+                SELECT id as "id!: Uuid", name as "name!", link as "link!: DCid", created_at as "created_at!", updated_at as "updated_at!", sync_status as "sync_status!: SyncStatus", last_sync_attempt as "last_sync_attempt: OffsetDateTime", sync_error as "sync_error: String"
                 FROM buckets
                 WHERE name LIKE $1
                 ORDER BY created_at DESC
@@ -121,7 +191,7 @@ impl Bucket {
             sqlx::query_as!(
                 Bucket,
                 r#"
-                SELECT id as "id!: Uuid", name as "name!", link as "link!: DCid", created_at as "created_at!", updated_at as "updated_at!"
+                SELECT id as "id!: Uuid", name as "name!", link as "link!: DCid", created_at as "created_at!", updated_at as "updated_at!", sync_status as "sync_status!: SyncStatus", last_sync_attempt as "last_sync_attempt: OffsetDateTime", sync_error as "sync_error: String"
                 FROM buckets
                 ORDER BY created_at DESC
                 LIMIT $1
@@ -163,7 +233,10 @@ mod tests {
                 name TEXT NOT NULL,
                 link VARCHAR(255) NOT NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                sync_status TEXT NOT NULL DEFAULT 'synced',
+                last_sync_attempt TIMESTAMP,
+                sync_error TEXT
             );
             CREATE UNIQUE INDEX buckets_id_name ON buckets (id, name);
             "#,
@@ -207,7 +280,6 @@ mod tests {
             }
             Err(BucketError::Database(e)) => {
                 // Sometimes constraint violation comes through as generic DB error
-                eprintln!("Got database error: {}", e);
                 assert!(e.to_string().contains("UNIQUE") || e.to_string().contains("constraint"));
             }
             Ok(_) => panic!("Expected error but got Ok"),

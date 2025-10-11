@@ -55,7 +55,7 @@
     
     {% block head %}{% endblock %}
 </head>
-<body class="bg-background text-foreground">
+<body class="bg-background text-foreground flex flex-col min-h-screen">
     <nav class="border-b bg-background">
         <div class="container mx-auto px-4 py-4">
             <div class="flex justify-between items-center">
@@ -64,15 +64,12 @@
                     <span>jax</span>
                 </a>
                 <div class="flex gap-6">
-                    <a href="/blobs" class="text-foreground hover:text-primary transition-colors text-decoration-none">Blobs</a>
-                    <a href="/pools" class="text-foreground hover:text-primary transition-colors text-decoration-none">Pools</a>
-                    <a href="/share" class="text-foreground hover:text-primary transition-colors text-decoration-none">Share</a>
-                    <a href="/query" class="text-foreground hover:text-primary transition-colors text-decoration-none">Query</a>
+                    <a href="/buckets" class="text-foreground hover:text-primary transition-colors text-decoration-none">Buckets</a>
                 </div>
             </div>
         </div>
     </nav>
-    
+
     <main class="flex-1 p-8">
         <div class="container mx-auto">
             {% block content %}{% endblock %}

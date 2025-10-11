@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::path::PathBuf;
 
 use url::Url;
 
@@ -8,13 +9,16 @@ use service::http_server::api::client::{ApiClient, ApiError};
 pub struct OpContext {
     /// API client (always initialized with default or custom URL)
     pub client: ApiClient,
+    /// Optional custom config path (defaults to ~/.jax)
+    pub config_path: Option<PathBuf>,
 }
 
 impl OpContext {
-    /// Create context with custom remote URL (or default if None)
-    pub fn new(remote: Url) -> Result<Self, ApiError> {
+    /// Create context with custom remote URL and optional config path
+    pub fn new(remote: Url, config_path: Option<PathBuf>) -> Result<Self, ApiError> {
         Ok(Self {
             client: ApiClient::new(&remote)?,
+            config_path,
         })
     }
 }

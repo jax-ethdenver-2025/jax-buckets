@@ -3,10 +3,9 @@ use std::ops::Deref;
 
 use chacha20poly1305::Key;
 use chacha20poly1305::{
-    aead::{Aead, AeadCore, KeyInit},
+    aead::{Aead, KeyInit},
     ChaCha20Poly1305, Nonce,
 };
-use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 // ChaCha20-Poly1305 uses 12-byte nonces
@@ -50,7 +49,7 @@ impl From<[u8; SECRET_SIZE]> for Secret {
 impl Secret {
     pub fn generate() -> Self {
         let mut buff = [0; SECRET_SIZE];
-        OsRng.fill_bytes(&mut buff);
+        getrandom::getrandom(&mut buff).expect("failed to generate random bytes");
         Self(buff)
     }
 
@@ -74,10 +73,14 @@ impl Secret {
 
     // Small payload encryption (keeps your existing API)
     pub fn encrypt(&self, data: &[u8]) -> Result<Vec<u8>, SecretError> {
-        let mut rng = OsRng;
         let key = Key::from_slice(self.bytes());
         let cipher = ChaCha20Poly1305::new(key);
-        let nonce = ChaCha20Poly1305::generate_nonce(&mut rng);
+
+        // Generate nonce manually
+        let mut nonce_bytes = [0u8; NONCE_SIZE];
+        getrandom::getrandom(&mut nonce_bytes)
+            .map_err(|e| anyhow::anyhow!("failed to generate nonce: {}", e))?;
+        let nonce = Nonce::from_slice(&nonce_bytes);
 
         let ciphertext = cipher
             .encrypt(&nonce, data.as_ref())

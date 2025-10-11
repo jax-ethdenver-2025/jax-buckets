@@ -42,21 +42,20 @@ impl BucketShare {
 }
 
 /**
-* Buckets
-* =======
-* Buckets are the top level structure in a JaxBucket.
-*  They are essenitially just a pointer to a:
-*   - an identifier for the bucket. this is global and static,
-*      and essentially provides a common namespace for all versions
-*      of a given bucket.
-*     clients may use this as a canonical identifier for the bucket.
-*   - a friendly name for the bucket (not used for provenance, just for display)
-*   - the entry point of the bucket
-*   - the previous version of the bucket
+* BucketData
+* ==========
+* BucketData is the serializable metadata for a bucket.
+* It stores:
+*   - an identifier for the bucket (global and static)
+*   - a friendly name for the bucket (for display)
+*   - shares (access control and encryption keys for principals)
+*   - pins (optional pin set)
+*   - previous version link
+*   - version info
 */
 #[allow(clippy::doc_overindented_list_items)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Bucket {
+pub struct BucketData {
     // Buckets have a global unique identifier
     //  that clients should respect
     id: Uuid,
@@ -77,12 +76,12 @@ pub struct Bucket {
     version: Version,
 }
 
-impl BlockEncoded<DagCborCodec> for Bucket {}
+impl BlockEncoded<DagCborCodec> for BucketData {}
 
-impl Bucket {
+impl BucketData {
     /// Create a new bucket with a name, owner, and share, and entry node link
     pub fn init(id: Uuid, name: String, owner: PublicKey, share: Share, root: Link) -> Self {
-        Bucket {
+        BucketData {
             id,
             name,
             shares: BTreeMap::from([(
@@ -104,7 +103,7 @@ impl Bucket {
 
     /// @deprecated -- don't use this
     pub fn new(name: String, owner: PublicKey) -> Self {
-        Bucket {
+        BucketData {
             id: Uuid::new_v4(),
             name,
             shares: BTreeMap::from([(
@@ -140,6 +139,10 @@ impl Bucket {
         Ok(())
     }
 
+    pub fn unset_shares(&mut self) {
+        self.shares.clear();
+    }
+
     pub fn id(&self) -> &Uuid {
         &self.id
     }
@@ -155,6 +158,22 @@ impl Bucket {
     pub fn version(&self) -> &Version {
         &self.version
     }
+
+    pub fn pins(&self) -> &Option<Link> {
+        &self.pins
+    }
+
+    pub fn set_pins(&mut self, pins_link: Link) {
+        self.pins = Some(pins_link);
+    }
+
+    pub fn set_previous(&mut self, previous: Link) {
+        self.previous = Some(previous);
+    }
+
+    pub fn previous(&self) -> &Option<Link> {
+        &self.previous
+    }
 }
 
 #[cfg(test)]
@@ -167,14 +186,14 @@ mod tests {
     fn test_bucket_encode_decode() {
         // Create a bucket
         let owner = crate::crypto::SecretKey::generate().public();
-        let bucket = Bucket::new("test-bucket".to_string(), owner);
+        let bucket = BucketData::new("test-bucket".to_string(), owner);
 
         // Encode
         let encoded = bucket.encode().unwrap();
         assert!(!encoded.is_empty());
 
         // Decode
-        let decoded = Bucket::decode(&encoded).unwrap();
+        let decoded = BucketData::decode(&encoded).unwrap();
 
         // Verify fields match
         assert_eq!(bucket.name(), decoded.name());
@@ -187,21 +206,19 @@ mod tests {
     fn test_bucket_with_shares_encode_decode() {
         // Create a bucket with shares
         let owner = crate::crypto::SecretKey::generate().public();
-        let mut bucket = Bucket::new("test-bucket".to_string(), owner);
+        let mut bucket = BucketData::new("test-bucket".to_string(), owner);
 
         // Add a share
         let secret = Secret::generate();
         let root = Link::default();
-        bucket
-            .add_share(owner, root.clone(), secret)
-            .unwrap();
+        bucket.add_share(owner, root.clone(), secret).unwrap();
 
         // Encode
         let encoded = bucket.encode().unwrap();
         assert!(!encoded.is_empty());
 
         // Decode
-        let decoded = Bucket::decode(&encoded).unwrap();
+        let decoded = BucketData::decode(&encoded).unwrap();
 
         // Verify fields match
         assert_eq!(bucket.name(), decoded.name());
@@ -215,7 +232,7 @@ mod tests {
     #[test]
     fn test_bucket_codec_value() {
         let owner = crate::crypto::SecretKey::generate().public();
-        let bucket = Bucket::new("test-bucket".to_string(), owner);
+        let bucket = BucketData::new("test-bucket".to_string(), owner);
 
         // Check the codec value matches DagCborCodec
         assert_eq!(bucket.codec(), 0x71); // DAG-CBOR codec

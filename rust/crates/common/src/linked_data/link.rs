@@ -7,7 +7,7 @@ use crate::crypto::PublicKey;
 use super::ipld::{Cid, LinkedData, Multihash, BLAKE3_HASH_CODE, LD_CBOR_CODEC, LD_RAW_CODEC};
 
 /// TODO (amiller68): revisit a better way to serialize this
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Link(u64, Hash, BlobFormat);
 
 // TODO (amiller68): i am really not sure if we need the BlobFormat
@@ -124,6 +124,6 @@ impl Link {
         let node_addr = NodeAddr::new(*source);
         // NOTE (amiller68): the initializer of blob ticket is essentially
         //  a no-op on version 0.35.0, so this is def safe
-        BlobTicket::new(node_addr, self.1, self.2).expect("valid block ticket")
+        BlobTicket::new(node_addr, self.1, self.2)
     }
 }

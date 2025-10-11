@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}{{ file_name }} - Jax{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+    <!-- Breadcrumb navigation -->
+    <nav aria-label="Breadcrumb">
+        <ol class="flex items-center gap-2 text-sm">
+            <li><a href="/buckets" class="text-primary hover:underline">Buckets</a></li>
+            <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
+            <li><a href="/buckets/{{ bucket_id }}" class="text-primary hover:underline">{{ bucket_name }}</a></li>
+            {% for segment in path_segments %}
+            <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
+            <li><a href="/buckets/{{ bucket_id }}?path={{ segment.path }}" class="text-primary hover:underline">{{ segment.name }}</a></li>
+            {% endfor %}
+            <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
+            <li class="text-muted-foreground">{{ file_name }}</li>
+        </ol>
+    </nav>
+
+    <div class="flex justify-between items-center">
+        <h1 class="text-3xl font-bold">
+            <i class="fas fa-file mr-2"></i>{{ file_name }}
+        </h1>
+        <a href="{{ back_url }}" class="button">
+            <i class="fas fa-arrow-left"></i> Back
+        </a>
+    </div>
+
+    <!-- File metadata card -->
+    <div class="card">
+        <div class="card-header">
+            <i class="fas fa-info-circle"></i>
+            <h2>File Information</h2>
+        </div>
+        <div class="p-4 space-y-2">
+            <div class="flex justify-between">
+                <span class="font-semibold">Path:</span>
+                <code class="text-sm">{{ file_path }}</code>
+            </div>
+            <div class="flex justify-between">
+                <span class="font-semibold">Size:</span>
+                <span class="text-sm">{{ file_size }} bytes</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="font-semibold">MIME Type:</span>
+                <code class="text-sm">{{ mime_type }}</code>
+            </div>
+        </div>
+    </div>
+
+    <!-- File content card -->
+    <div class="card">
+        <div class="card-header">
+            <i class="fas fa-file-alt"></i>
+            <h2>Content</h2>
+        </div>
+
+        <!-- Images -->
+        {% if mime_type.starts_with("image/") %}
+        <div class="p-4 text-center">
+            <img src="data:{{ mime_type }};base64,{{ content }}" alt="{{ file_name }}" class="max-w-full h-auto mx-auto border rounded">
+        </div>
+
+        <!-- Videos -->
+        {% else if mime_type.starts_with("video/") %}
+        <div class="p-4">
+            <video controls class="w-full max-w-4xl mx-auto rounded">
+                <source src="data:{{ mime_type }};base64,{{ content }}" type="{{ mime_type }}">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+
+        <!-- Audio -->
+        {% else if mime_type.starts_with("audio/") %}
+        <div class="p-4">
+            <audio controls class="w-full max-w-2xl mx-auto">
+                <source src="data:{{ mime_type }};base64,{{ content }}" type="{{ mime_type }}">
+                Your browser does not support the audio tag.
+            </audio>
+        </div>
+
+        <!-- Text files -->
+        {% else if is_text %}
+        <div class="p-4">
+            <pre class="bg-muted p-4 rounded overflow-x-auto"><code>{{ content }}</code></pre>
+        </div>
+
+        <!-- Binary files -->
+        {% else %}
+        <div class="p-4 text-center">
+            <p class="text-muted-foreground mb-4">
+                <i class="fas fa-file-code text-4xl mb-2"></i><br>
+                Binary file ({{ file_size }} bytes)
+            </p>
+            <details class="text-left">
+                <summary class="cursor-pointer text-primary hover:underline mb-2">Show hex dump</summary>
+                <pre class="bg-muted p-4 rounded overflow-x-auto text-xs"><code>{{ content }}</code></pre>
+            </details>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -6,7 +6,7 @@ use std::ops::Deref;
 
 use sqlx::SqlitePool;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Database(SqlitePool);
 
 #[allow(dead_code)]

@@ -2,12 +2,11 @@
 name = "service"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
 [lib]
 name = "service"
 path = "src/lib.rs"
-
-build = "build.rs"
 
 [dependencies]
 # Workspace crates
@@ -17,7 +16,7 @@ common = { path = "../common" }
 clap = { workspace = true, optional = true }
 
 # web + service
-axum = { workspace = true, features = ["macros"] }
+axum = { workspace = true, features = ["macros", "multipart"] }
 axum-extra = { version = "^0.10", features = ["typed-header"] }
 tower = { workspace = true }
 tower-http = { workspace = true, features = ["fs", "cors", "trace"] }
@@ -29,10 +28,13 @@ tracing-subscriber = { workspace = true }
 
 # async
 tokio = { workspace = true }
+async-trait = "0.1"
+flume = "0.11"
 
 # http
 askama = { workspace = true }
 askama_axum = { workspace = true }
+rust-embed = "8.5"
 
 # sql
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "time", "macros", "uuid"] }
@@ -49,6 +51,9 @@ futures.workspace = true
 reqwest = { workspace = true, features = ["json"] }
 uuid = { workspace = true, features = ["v4"] }
 chrono = { workspace = true }
+base64 = "0.22"
+tempfile = { workspace = true }
+mime_guess = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
