@@ -6,6 +6,8 @@ on:
       - "jax-common-v*"
       - "jax-service-v*"
       - "jax-bucket-v*"
+    branches:
+      - main
     paths:
       - ".github/workflows/publish-crate.yml"
 
