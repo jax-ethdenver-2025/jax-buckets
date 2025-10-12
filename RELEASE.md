@@ -38,7 +38,6 @@ This is the recommended approach for now:
 
 2. **Preview what would happen** (dry-run):
    ```bash
-   cd rust
    cargo smart-release jax-bucket -v
    ```
 
@@ -151,8 +150,8 @@ Make sure you have push permissions to the repository. Check `git remote -v` to 
 
 ## Files
 
-- `rust/release.toml` - Configuration for cargo-smart-release
-- `rust/crates/*/CHANGELOG.md` - Per-crate changelogs
+- `release.toml` - Configuration for cargo-smart-release
+- `crates/*/CHANGELOG.md` - Per-crate changelogs
 - `.github/workflows/publish-crate.yml` - Automated publishing workflow
 
 ## Examples
@@ -164,7 +163,6 @@ Make sure you have push permissions to the repository. Check `git remote -v` to 
 git log --oneline
 
 # 2. Dry-run to preview
-cd rust
 cargo smart-release jax-bucket -v
 
 # 3. Execute if everything looks good
@@ -181,6 +179,5 @@ cargo smart-release jax-bucket --execute --no-publish
 git commit -m "fix: critical security issue in authentication"
 
 # Release immediately
-cd rust
 cargo smart-release jax-bucket --execute --no-publish --bump patch
 ```

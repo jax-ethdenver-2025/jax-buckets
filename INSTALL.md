@@ -83,7 +83,7 @@ Clone and build manually for development or customization:
 ```bash
 # Clone the repository
 git clone https://github.com/jax-ethdenver-2025/jax-bucket.git
-cd jax-bucket/rust
+cd jax-bucket
 
 # Build in release mode
 cargo build --release

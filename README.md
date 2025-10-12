@@ -55,7 +55,7 @@ For detailed installation instructions and requirements, see [INSTALL.md](INSTAL
 - **[PROTOCOL.md](PROTOCOL.md)** - Technical protocol specification and data model
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** - Development setup and environment
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
-- **[rust/RELEASE.md](rust/RELEASE.md)** - Release process
+- **[RELEASE.md](RELEASE.md)** - Release process
 
 ## Use Cases
 
@@ -68,17 +68,16 @@ For detailed installation instructions and requirements, see [INSTALL.md](INSTAL
 
 ```text
 jax-bucket/
-├── rust/
-│   └── crates/
-│       ├── common/          # Core data structures and crypto
-│       ├── service/         # HTTP server and sync manager
-│       └── app/             # CLI binary
-├── README.md                # This file
-├── INSTALL.md               # Installation guide
-├── USAGE.md                 # Usage guide
-├── PROTOCOL.md              # Protocol specification
-├── DEVELOPMENT.md           # Development guide
-└── CONTRIBUTING.md          # Contribution guidelines
+├── crates/
+│   ├── common/          # Core data structures and crypto
+│   ├── service/         # HTTP server and sync manager
+│   └── app/             # CLI binary
+├── README.md            # This file
+├── INSTALL.md           # Installation guide
+├── USAGE.md             # Usage guide
+├── PROTOCOL.md          # Protocol specification
+├── DEVELOPMENT.md       # Development guide
+└── CONTRIBUTING.md      # Contribution guidelines
 ```
 
 ## Contributing

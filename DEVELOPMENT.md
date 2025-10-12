@@ -48,8 +48,6 @@ cd jax-bucket
 ### Build the Project
 
 ```bash
-cd rust
-
 # Build in debug mode (faster compilation, slower runtime)
 cargo build
 
@@ -74,7 +72,7 @@ cargo run --bin jax -- --help
 
 JaxBucket includes a convenient development script that sets up a **two-node P2P network** in tmux with auto-reload.
 
-### Using `rust/bin/dev.sh`
+### Using `bin/dev.sh`
 
 The `dev.sh` script creates a tmux session with:
 - **Two JaxBucket nodes** running in parallel (Node1 and Node2)
@@ -84,7 +82,6 @@ The `dev.sh` script creates a tmux session with:
 **Start the development environment:**
 
 ```bash
-cd rust
 ./bin/dev.sh
 ```
 
@@ -199,39 +196,38 @@ With both nodes running:
 
 ```text
 jax-bucket/
-├── rust/
-│   ├── Cargo.toml                 # Workspace configuration
-│   ├── bin/
-│   │   ├── dev.sh                 # Development environment script
-│   │   └── db.sh                  # Database inspection script
-│   └── crates/
-│       ├── common/                # Core library (platform-agnostic)
-│       │   ├── src/
-│       │   │   ├── bucket/        # Bucket, Manifest, Node, Pins
-│       │   │   ├── crypto/        # Keys, Secrets, Shares
-│       │   │   ├── linked_data/   # Link, CID, DAG-CBOR
-│       │   │   └── peer/          # Peer, BlobsStore, JAX Protocol
-│       │   ├── Cargo.toml
-│       │   └── CHANGELOG.md
-│       ├── service/               # Server-side logic
-│       │   ├── src/
-│       │   │   ├── database/      # SQLite models and queries
-│       │   │   ├── http_server/   # API and Web UI
-│       │   │   ├── mount_ops/     # Bucket operations
-│       │   │   └── sync_manager/  # P2P sync logic
-│       │   ├── Cargo.toml
-│       │   └── CHANGELOG.md
-│       └── app/                   # CLI binary
-│           ├── src/
-│           │   ├── main.rs        # Entry point
-│           │   └── ops/           # CLI commands
-│           ├── Cargo.toml
-│           └── CHANGELOG.md
-├── README.md                      # Project overview
-├── INSTALL.md                     # Installation guide
-├── PROTOCOL.md                    # Protocol specification
-├── DEVELOPMENT.md                 # This file
-└── CONTRIBUTING.md                # Contribution guidelines
+├── Cargo.toml                 # Workspace configuration
+├── bin/
+│   ├── dev.sh                 # Development environment script
+│   └── db.sh                  # Database inspection script
+├── crates/
+│   ├── common/                # Core library (platform-agnostic)
+│   │   ├── src/
+│   │   │   ├── bucket/        # Bucket, Manifest, Node, Pins
+│   │   │   ├── crypto/        # Keys, Secrets, Shares
+│   │   │   ├── linked_data/   # Link, CID, DAG-CBOR
+│   │   │   └── peer/          # Peer, BlobsStore, JAX Protocol
+│   │   ├── Cargo.toml
+│   │   └── CHANGELOG.md
+│   ├── service/               # Server-side logic
+│   │   ├── src/
+│   │   │   ├── database/      # SQLite models and queries
+│   │   │   ├── http_server/   # API and Web UI
+│   │   │   ├── mount_ops/     # Bucket operations
+│   │   │   └── sync_manager/  # P2P sync logic
+│   │   ├── Cargo.toml
+│   │   └── CHANGELOG.md
+│   └── app/                   # CLI binary
+│       ├── src/
+│       │   ├── main.rs        # Entry point
+│       │   └── ops/           # CLI commands
+│       ├── Cargo.toml
+│       └── CHANGELOG.md
+├── README.md                  # Project overview
+├── INSTALL.md                 # Installation guide
+├── PROTOCOL.md                # Protocol specification
+├── DEVELOPMENT.md             # This file
+└── CONTRIBUTING.md            # Contribution guidelines
 ```
 
 ### Key Crates
