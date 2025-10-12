@@ -16,7 +16,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # Workspace crates
-common = { package = "jax-common", version = "0.1.0", path = "../common" }
+common = { package = "jax-common", version = "0.1.1", path = "../common" }
 
 # optional clap support for CLI usage
 clap = { workspace = true, optional = true }
