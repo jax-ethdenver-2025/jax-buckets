@@ -43,24 +43,10 @@ pub struct BucketDisplayInfo {
 pub async fn handler(
     State(state): State<ServiceState>,
     Extension(config): Extension<Config>,
-    headers: HeaderMap,
+    _headers: HeaderMap,
 ) -> askama_axum::Response {
-    // Check if request host matches configured hostname
-    let read_only = if let Some(host_header) = headers.get("host") {
-        if let Ok(host_str) = host_header.to_str() {
-            // Extract hostname from config (without scheme/port)
-            let config_host = config.hostname.host_str().unwrap_or("localhost");
-            let config_port = config.hostname.port().unwrap_or(8080);
-            let expected_host = format!("{}:{}", config_host, config_port);
-
-            // Compare with request host
-            host_str != expected_host && host_str != "localhost:8080"
-        } else {
-            true // If we can't parse the host, assume read-only for safety
-        }
-    } else {
-        true // No host header, assume read-only for safety
-    };
+    // Use the read_only flag from config
+    let read_only = config.read_only;
 
     // Load buckets from database using mount_ops
     let buckets = match mount_ops::list_buckets(&state).await {

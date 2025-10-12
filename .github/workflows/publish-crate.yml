@@ -3,7 +3,9 @@ name: Publish to crates.io
 on:
   push:
     tags:
-      - 'v*'
+      - 'jax-common-v*'
+      - 'jax-service-v*'
+      - 'jax-bucket-v*'
 
 jobs:
   publish:

@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  jax-node1:
+    build:
+      context: .
+      args:
+        JAX_VERSION: "0.1.0"
+        CONFIG_PATH: /data/node
+        API_PORT: 3000
+        HTML_PORT: 8080
+        PEER_PORT: 9000
+    ports:
+      - "3000:3000"  # API
+      - "8080:8080"  # HTML UI
+      - "9000:9000"  # Peer
+    volumes:
+      - node1-data:/data
+    environment:
+      - RUST_LOG=info
+    restart: unless-stopped
+
+  jax-node2:
+    build:
+      context: .
+      args:
+        JAX_VERSION: "0.1.0"
+        CONFIG_PATH: /data/node
+        API_PORT: 3001
+        HTML_PORT: 8081
+        PEER_PORT: 9001
+    ports:
+      - "3001:3001"  # API
+      - "8081:8081"  # HTML UI
+      - "9001:9001"  # Peer
+    volumes:
+      - node2-data:/data
+    environment:
+      - RUST_LOG=info
+      - API_ADDR=0.0.0.0:3001
+      - HTML_ADDR=0.0.0.0:8081
+      - PEER_PORT=9001
+    restart: unless-stopped
+
+volumes:
+  node1-data:
+  node2-data:

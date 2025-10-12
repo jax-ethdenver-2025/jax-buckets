@@ -5,7 +5,15 @@ use service::{spawn_service, ServiceConfig};
 use crate::state::AppState;
 
 #[derive(Args, Debug, Clone)]
-pub struct Service;
+pub struct Service {
+    /// Run the HTML UI in read-only mode (hides write operations)
+    #[arg(long)]
+    pub ui_read_only: bool,
+
+    /// API hostname to use for HTML UI (default: http://localhost:<api_port>)
+    #[arg(long)]
+    pub api_hostname: Option<String>,
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServiceError {
@@ -44,6 +52,8 @@ impl crate::op::Op for Service {
             api_listen_addr: state.config.api_listen_addr.parse().ok(),
             sqlite_path: Some(state.db_path),
             log_level: tracing::Level::DEBUG,
+            ui_read_only: self.ui_read_only,
+            api_hostname: self.api_hostname.clone(),
         };
 
         spawn_service(&config).await;

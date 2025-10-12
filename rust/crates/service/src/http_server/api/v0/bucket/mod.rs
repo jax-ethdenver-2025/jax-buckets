@@ -8,7 +8,6 @@ pub mod cat;
 pub mod create;
 pub mod list;
 pub mod ls;
-pub mod mount;
 pub mod share;
 
 // Re-export for convenience
@@ -17,7 +16,6 @@ pub use cat::{CatRequest, CatResponse};
 pub use create::{CreateRequest, CreateResponse};
 pub use list::{ListRequest, ListResponse};
 pub use ls::{LsRequest, LsResponse};
-pub use mount::{MountRequest, MountResponse};
 pub use share::{ShareRequest, ShareResponse};
 
 pub fn router(state: ServiceState) -> Router<ServiceState> {
@@ -27,7 +25,6 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         .route("/add", post(add::handler))
         .route("/ls", post(ls::handler))
         .route("/cat", post(cat::handler))
-        .route("/mount", post(mount::handler))
         .route("/share", post(share::handler))
         .with_state(state)
 }

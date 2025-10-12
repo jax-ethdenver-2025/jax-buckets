@@ -12,16 +12,19 @@ pub struct Config {
     pub api_url: Option<String>,
     // log level for http tracing
     pub log_level: tracing::Level,
+    // Run HTML UI in read-only mode
+    pub read_only: bool,
 }
 
 impl Config {
-    pub fn new(listen_addr: SocketAddr, api_url: Option<String>) -> Self {
+    pub fn new(listen_addr: SocketAddr, api_url: Option<String>, read_only: bool) -> Self {
         let hostname = Url::parse(&format!("http://localhost:{}", listen_addr.port())).unwrap();
         Self {
             listen_addr,
             hostname,
             api_url,
             log_level: tracing::Level::INFO,
+            read_only,
         }
     }
 }

@@ -22,5 +22,4 @@ pub use get_bucket_shares::get_bucket_shares;
 pub use get_file_content::get_file_content;
 pub use list_buckets::list_buckets;
 pub use list_contents::list_bucket_contents;
-pub use load_mount::load_mount_for_bucket;
 pub use share_bucket::share_bucket;

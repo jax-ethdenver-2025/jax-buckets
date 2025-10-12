@@ -5,13 +5,10 @@ pub mod cat;
 pub mod create;
 pub mod list;
 pub mod ls;
-pub mod mount;
 pub mod share;
 
 use crate::op::Op;
-use service::http_server::api::v0::bucket::{
-    CreateRequest, ListRequest, MountRequest, ShareRequest,
-};
+use service::http_server::api::v0::bucket::{CreateRequest, ListRequest, ShareRequest};
 
 crate::command_enum! {
     (Create, CreateRequest),
@@ -19,7 +16,6 @@ crate::command_enum! {
     (Add, add::Add),
     (Ls, ls::Ls),
     (Cat, cat::Cat),
-    (Mount, MountRequest),
     (Share, ShareRequest),
 }
 

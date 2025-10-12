@@ -60,8 +60,12 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
 
     // Start HTML server
     let html_state = state.as_ref().clone();
-    let api_url = format!("http://localhost:{}", api_listen_addr.port());
-    let html_config = http_server::Config::new(html_listen_addr, Some(api_url));
+    let api_url = service_config
+        .api_hostname
+        .clone()
+        .unwrap_or_else(|| format!("http://localhost:{}", api_listen_addr.port()));
+    let html_config =
+        http_server::Config::new(html_listen_addr, Some(api_url), service_config.ui_read_only);
     let html_rx = shutdown_rx.clone();
     let html_handle = tokio::spawn(async move {
         tracing::info!("Starting HTML server on {}", html_listen_addr);
@@ -73,7 +77,7 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
 
     // Start API server
     let api_state = state.as_ref().clone();
-    let api_config = http_server::Config::new(api_listen_addr, None);
+    let api_config = http_server::Config::new(api_listen_addr, None, false);
     let api_rx = shutdown_rx.clone();
     let api_handle = tokio::spawn(async move {
         tracing::info!("Starting API server on {}", api_listen_addr);

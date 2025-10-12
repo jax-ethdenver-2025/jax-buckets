@@ -1,0 +1,41 @@
+# Configuration for cargo-smart-release
+# Handles version bumping, changelog generation, and git tagging for the workspace
+
+# Consolidate commits into a single commit after updating versions
+consolidate-commits = true
+
+# Push to remote after releasing
+push = true
+
+# Allow dirty working directory (useful in CI)
+allow-dirty = false
+
+# Disable individual crate publishing since GitHub Actions handles that
+publish = false
+
+# Pre-release hook to run tests
+pre-release-hook = ["cargo", "test", "--all"]
+
+# Tag format for releases
+tag-prefix = "v"
+
+# Generate changelogs for each crate
+changelogs = true
+
+# Changelog format - uses conventional commits
+changelog-format = "conventional"
+
+# Commit message template
+release-commit-message = "release"
+
+# Don't create individual tags for each crate, use workspace-level tags
+individual-tag-names = false
+
+# Update dependencies between workspace crates
+update-dependencies = true
+
+# Use conventional commits for determining version bumps
+bump = "auto"
+
+# Consider pre-release tags
+pre-release = false

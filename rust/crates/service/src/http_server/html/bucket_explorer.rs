@@ -72,23 +72,12 @@ pub struct ExplorerQuery {
 pub async fn handler(
     State(state): State<ServiceState>,
     Extension(config): Extension<Config>,
-    headers: HeaderMap,
+    _headers: HeaderMap,
     Path(bucket_id): Path<Uuid>,
     Query(query): Query<ExplorerQuery>,
 ) -> askama_axum::Response {
-    // Check if request host matches configured hostname
-    let read_only = if let Some(host_header) = headers.get("host") {
-        if let Ok(host_str) = host_header.to_str() {
-            let config_host = config.hostname.host_str().unwrap_or("localhost");
-            let config_port = config.hostname.port().unwrap_or(8080);
-            let expected_host = format!("{}:{}", config_host, config_port);
-            host_str != expected_host && host_str != "localhost:8080"
-        } else {
-            true
-        }
-    } else {
-        true
-    };
+    // Use the read_only flag from config
+    let read_only = config.read_only;
 
     let current_path = query.path.unwrap_or_else(|| "/".to_string());
 

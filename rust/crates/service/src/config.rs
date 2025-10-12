@@ -33,6 +33,12 @@ pub struct Config {
 
     // misc
     pub log_level: tracing::Level,
+
+    // ui configuration
+    /// run the HTML UI in read-only mode (hides write operations)
+    pub ui_read_only: bool,
+    /// API hostname to use for HTML UI
+    pub api_hostname: Option<String>,
 }
 
 impl Default for Config {
@@ -45,6 +51,8 @@ impl Default for Config {
             api_listen_addr: Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 3000)),
             sqlite_path: None,
             log_level: tracing::Level::INFO,
+            ui_read_only: false,
+            api_hostname: None,
         }
     }
 }
