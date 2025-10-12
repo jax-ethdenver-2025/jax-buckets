@@ -3,17 +3,16 @@ name: Publish to crates.io
 on:
   push:
     tags:
-      - 'jax-common-v*'
-      - 'jax-service-v*'
-      - 'jax-bucket-v*'
+      - "jax-common-v*"
+      - "jax-service-v*"
+      - "jax-bucket-v*"
+    paths:
+      - ".github/workflows/publish-crate.yml"
 
 jobs:
   publish:
     name: Publish jax-bucket to crates.io
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./rust
 
     steps:
       - name: Checkout code
