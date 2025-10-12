@@ -1,7 +1,7 @@
 # JaxBucket
 
-[![Crates.io](https://img.shields.io/crates/v/jax-common.svg)](https://crates.io/crates/jax-common)
-[![Documentation](https://docs.rs/jax-bucket/badge.svg)](https://docs.rs/jax-bucket)
+[![Crates.io](https://img.shields.io/crates/v/jax-bucket.svg)](https://crates.io/crates/jax-bucket)
+[![Documentation](https://docs.rs/jax-common/badge.svg)](https://docs.rs/jax-common)
 [![CI](https://github.com/jax-ethdenver-2025/jax-buckets/actions/workflows/ci.yml/badge.svg)](https://github.com/jax-ethdenver-2025/jax-buckets/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust Version](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://www.rust-lang.org)
