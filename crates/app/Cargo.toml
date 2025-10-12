@@ -8,7 +8,7 @@ homepage.workspace = true
 description = "End-to-end encrypted storage buckets with peer-to-peer synchronization"
 keywords.workspace = true
 categories.workspace = true
-readme = "../../../README.md"
+readme = "../../README.md"
 
 [[bin]]
 name = "jax"
