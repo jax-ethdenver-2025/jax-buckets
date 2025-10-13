@@ -50,10 +50,45 @@ jobs:
       - name: Run tests
         run: cargo test --all
 
-      - name: Install cargo-workspaces
-        run: cargo install cargo-workspaces
+      - name: Publish crates to crates.io (in order with delays)
+        run: |
+          # Publish in dependency order with delays for crates.io indexing
 
-      - name: Publish all crates to crates.io
-        run: cargo workspaces publish --from-git --allow-dirty --yes
+          # Check if jax-common tag exists and needs publishing
+          if git tag -l | grep -q "jax-common-v"; then
+            COMMON_VERSION=$(git describe --tags --match "jax-common-v*" --abbrev=0 2>/dev/null | sed 's/jax-common-v//')
+            if [ -n "$COMMON_VERSION" ]; then
+              echo "Publishing jax-common v$COMMON_VERSION..."
+              cd crates/common
+              cargo publish --token $CARGO_REGISTRY_TOKEN || echo "jax-common already published or failed"
+              cd ../..
+              echo "Waiting 30s for crates.io to index..."
+              sleep 30
+            fi
+          fi
+
+          # Check if jax-service tag exists and needs publishing
+          if git tag -l | grep -q "jax-service-v"; then
+            SERVICE_VERSION=$(git describe --tags --match "jax-service-v*" --abbrev=0 2>/dev/null | sed 's/jax-service-v//')
+            if [ -n "$SERVICE_VERSION" ]; then
+              echo "Publishing jax-service v$SERVICE_VERSION..."
+              cd crates/service
+              cargo publish --token $CARGO_REGISTRY_TOKEN || echo "jax-service already published or failed"
+              cd ../..
+              echo "Waiting 30s for crates.io to index..."
+              sleep 30
+            fi
+          fi
+
+          # Check if jax-bucket tag exists and needs publishing
+          if git tag -l | grep -q "jax-bucket-v"; then
+            BUCKET_VERSION=$(git describe --tags --match "jax-bucket-v*" --abbrev=0 2>/dev/null | sed 's/jax-bucket-v//')
+            if [ -n "$BUCKET_VERSION" ]; then
+              echo "Publishing jax-bucket v$BUCKET_VERSION..."
+              cd crates/app
+              cargo publish --token $CARGO_REGISTRY_TOKEN || echo "jax-bucket already published or failed"
+              cd ../..
+            fi
+          fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
