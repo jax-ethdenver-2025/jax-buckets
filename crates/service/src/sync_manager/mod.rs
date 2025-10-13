@@ -4,6 +4,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::database::models::{Bucket, SyncStatus};
+use crate::jax_state::MAX_HISTORY_DEPTH;
 use crate::mount_ops;
 use crate::ServiceState;
 use common::bucket::Manifest;
@@ -39,6 +40,16 @@ pub enum SyncEvent {
 pub struct SyncManager {
     sender: Sender<SyncEvent>,
     state: Arc<ServiceState>,
+}
+
+/// Result of multi-hop verification when walking a peer's chain
+enum MultiHopOutcome {
+    /// Found a manifest whose previous equals our current link
+    Verified { depth: usize },
+    /// Chain terminated without including our current link
+    Fork,
+    /// Walk exceeded the configured maximum depth
+    DepthExceeded,
 }
 
 impl SyncManager {
@@ -119,12 +130,195 @@ impl SyncManager {
         Ok(shares.iter().any(|share| share.public_key == peer_hex))
     }
 
-    /// Verify single-hop: peer's previous must equal our current link
-    fn verify_single_hop(current_link: &Link, peer_bucket_data: &Manifest) -> bool {
-        match peer_bucket_data.previous() {
-            Some(prev) => prev == current_link,
-            None => false, // No previous means it's initial version, not a single-hop update
+    /// Iteratively verify that a peer's latest link chains back to our current link.
+    ///
+    /// Walks the manifest chain from `latest_link` backwards by following `previous`,
+    /// downloading only manifests from the specified peer, until it finds a manifest
+    /// whose `previous` equals `our_current_link`. Returns true if such a link is
+    /// found within `MAX_MULTI_HOP_DEPTH`; returns false on fork/mismatch or when
+    /// the chain terminates without reaching our current link.
+    async fn verify_multi_hop(
+        &self,
+        peer_pub_key: &PublicKey,
+        latest_link: &Link,
+        our_current_link: &Link,
+        first_manifest: Option<Manifest>,
+    ) -> anyhow::Result<MultiHopOutcome> {
+        let mut cursor = latest_link.clone();
+        let mut cached = first_manifest;
+
+        for depth in 0..MAX_HISTORY_DEPTH {
+            // Download or reuse the manifest at the current cursor from the specific peer
+            let manifest = match cached.take() {
+                Some(m) => m,
+                None => match self.download_from_peer(&cursor, peer_pub_key).await {
+                    Ok(m) => m,
+                    Err(e) => return Err(e),
+                },
+            };
+
+            match manifest.previous() {
+                Some(prev) if prev == our_current_link => {
+                    return Ok(MultiHopOutcome::Verified { depth })
+                }
+                Some(prev) => {
+                    // Continue walking backwards
+                    cursor = prev.clone();
+                }
+                None => return Ok(MultiHopOutcome::Fork),
+            }
         }
+
+        Ok(MultiHopOutcome::DepthExceeded)
+    }
+
+    /// Download the peer's latest manifest, verify the chain back to our current link,
+    /// download the pinset, and update the bucket link & sync status.
+    async fn verify_and_apply_update(
+        &self,
+        bucket_id: Uuid,
+        current_link: &Link,
+        new_link: &Link,
+        peer_pub_key: &PublicKey,
+        peer_label: &str,
+    ) -> anyhow::Result<()> {
+        // 1) Download the latest manifest (cache for verification)
+        let bucket_data = match self.download_from_peer(new_link, peer_pub_key).await {
+            Ok(data) => data,
+            Err(e) => {
+                tracing::error!(
+                    "Failed to download bucket data from peer {} for link {:?}: {}",
+                    peer_label,
+                    new_link,
+                    e
+                );
+                if let Some(bucket) = Bucket::get_by_id(&bucket_id, self.state.database()).await? {
+                    bucket
+                        .update_sync_status(
+                            SyncStatus::Failed,
+                            Some(format!("Failed to download new bucket data: {}", e)),
+                            self.state.database(),
+                        )
+                        .await?;
+                }
+                return Ok(());
+            }
+        };
+
+        // 2) Multi-hop verify the chain from latest back to our current link
+        match self
+            .verify_multi_hop(
+                peer_pub_key,
+                new_link,
+                current_link,
+                Some(bucket_data.clone()),
+            )
+            .await
+        {
+            Ok(MultiHopOutcome::Verified { depth }) => {
+                tracing::info!(
+                    "Multi-hop verification succeeded for bucket {} from peer {} at depth {}",
+                    bucket_id,
+                    peer_label,
+                    depth
+                );
+            }
+            Ok(MultiHopOutcome::Fork) => {
+                tracing::error!(
+                    "Multi-hop verification failed (fork or mismatch) for bucket {}",
+                    bucket_id
+                );
+                if let Some(bucket) = Bucket::get_by_id(&bucket_id, self.state.database()).await? {
+                    bucket
+                        .update_sync_status(
+                            SyncStatus::Failed,
+                            Some(
+                                "Multi-hop verification failed: chain mismatch or fork".to_string(),
+                            ),
+                            self.state.database(),
+                        )
+                        .await?;
+                }
+                return Ok(());
+            }
+            Ok(MultiHopOutcome::DepthExceeded) => {
+                tracing::error!(
+                    "Multi-hop verification failed (depth exceeded) for bucket {}",
+                    bucket_id
+                );
+                if let Some(bucket) = Bucket::get_by_id(&bucket_id, self.state.database()).await? {
+                    bucket
+                        .update_sync_status(
+                            SyncStatus::Failed,
+                            Some("Multi-hop verification failed: depth exceeded".to_string()),
+                            self.state.database(),
+                        )
+                        .await?;
+                }
+                return Ok(());
+            }
+            Err(e) => {
+                tracing::error!(
+                    "Error during multi-hop verification for bucket {}: {}",
+                    bucket_id,
+                    e
+                );
+                if let Some(bucket) = Bucket::get_by_id(&bucket_id, self.state.database()).await? {
+                    bucket
+                        .update_sync_status(
+                            SyncStatus::Failed,
+                            Some(format!("Multi-hop verification error: {}", e)),
+                            self.state.database(),
+                        )
+                        .await?;
+                }
+                return Ok(());
+            }
+        }
+
+        // 3) Download the pinset for the verified latest
+        let pins_link = bucket_data.pins();
+        let blobs = self.state.node().blobs();
+        let endpoint = self.state.node().endpoint();
+        let pins_hash = *pins_link.hash();
+        let peer_ids = vec![(*peer_pub_key).into()];
+
+        match blobs
+            .download_hash_list(pins_hash, peer_ids, endpoint)
+            .await
+        {
+            Ok(()) => {
+                tracing::info!(
+                    "Successfully downloaded pinset for bucket {} from peer {}",
+                    bucket_id,
+                    peer_label
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    "Failed to download pinset for bucket {} from peer {}: {}",
+                    bucket_id,
+                    peer_label,
+                    e
+                );
+                // Do not fail the overall operation on pinset errors
+            }
+        }
+
+        // 4) Update the bucket's link and mark as synced
+        if let Some(bucket) = Bucket::get_by_id(&bucket_id, self.state.database()).await? {
+            bucket
+                .update_link_and_sync(new_link.clone(), self.state.database())
+                .await?;
+        }
+
+        tracing::info!(
+            "Successfully applied update for bucket {} from peer {}",
+            bucket_id,
+            peer_label
+        );
+
+        Ok(())
     }
 
     /// get a bucket locally
@@ -316,104 +510,16 @@ impl SyncManager {
             bucket_id
         );
 
-        // 6. Download the BucketData from the peer
+        // Use shared verifier + applier
         let peer_pub_key = PublicKey::from(peer_addr.node_id);
-        let bucket_data = match self.download_from_peer(&new_link, &peer_pub_key).await {
-            Ok(data) => data,
-            Err(e) => {
-                tracing::error!(
-                    "Failed to download bucket data from peer {:?} for link {:?}: {}",
-                    peer_addr,
-                    new_link,
-                    e
-                );
-                bucket
-                    .update_sync_status(
-                        SyncStatus::Failed,
-                        Some(format!("Failed to download new bucket data: {}", e)),
-                        self.state.database(),
-                    )
-                    .await?;
-                return Ok(());
-            }
-        };
-
-        // 7. Verify single-hop: peer's previous must equal our current link
-        if !Self::verify_single_hop(&current_link, &bucket_data) {
-            tracing::warn!(
-                "Single-hop verification failed during pull sync for bucket {}",
-                bucket_id
-            );
-            bucket
-                .update_sync_status(
-                    SyncStatus::Failed,
-                    Some("Downloaded bucket data failed single-hop verification".to_string()),
-                    self.state.database(),
-                )
-                .await?;
-            return Ok(());
-        }
-
-        // 8. Download the pinset if it exists
-        let pins_link = bucket_data.pins();
-        tracing::info!(
-            "Downloading pinset for bucket {} from peer {:?}",
+        self.verify_and_apply_update(
             bucket_id,
-            peer_addr
-        );
-        let blobs = self.state.node().blobs();
-        let pins_hash = *pins_link.hash();
-        let peer_ids = vec![peer_pub_key.into()];
-
-        match blobs
-            .download_hash_list(pins_hash, peer_ids.clone(), endpoint)
-            .await
-        {
-            Ok(()) => {
-                tracing::info!(
-                    "Successfully downloaded pinset for bucket {} from pull sync",
-                    bucket_id
-                );
-
-                // Verify the pinset was downloaded
-                match blobs.stat(&pins_hash).await {
-                    Ok(true) => {
-                        tracing::debug!("Verified pinset hash {} exists locally", pins_hash)
-                    }
-                    Ok(false) => tracing::error!(
-                        "Pinset hash {} NOT found locally after download!",
-                        pins_hash
-                    ),
-                    Err(e) => {
-                        tracing::error!("Error checking pinset hash {}: {}", pins_hash, e)
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::error!(
-                    "Failed to download pinset for bucket {} from peer {:?}: {}",
-                    bucket_id,
-                    peer_addr,
-                    e
-                );
-                // Don't fail the whole operation
-            }
-        }
-
-        // 9. Update bucket with new link and mark as synced
-        tracing::info!(
-            "Pull sync completed for bucket {}, updating to new link {:?}",
-            bucket_id,
-            new_link
-        );
-
-        bucket
-            .update_link_and_sync(new_link, self.state.database())
-            .await?;
-
-        tracing::info!("Successfully synced bucket {} via pull", bucket_id);
-
-        Ok(())
+            &current_link,
+            &new_link,
+            &peer_pub_key,
+            &format!("{:?}", peer_addr),
+        )
+        .await
     }
 
     /// Handle push/announce: notify peers of our new version
@@ -485,7 +591,7 @@ impl SyncManager {
         bucket_id: Uuid,
         peer_id: String,
         new_link: Link,
-        previous_link: Option<Link>,
+        _previous_link: Option<Link>,
     ) -> anyhow::Result<()> {
         // 1. Get bucket from database
         let bucket = match Bucket::get_by_id(&bucket_id, self.state.database()).await? {
@@ -598,8 +704,6 @@ impl SyncManager {
         };
 
         let current_link: Link = bucket.link.into();
-        let manifest = self.get_bucket(&current_link).await?;
-        let our_previous = manifest.previous();
 
         // 2. Parse peer public key from peer_id (hex string)
         let peer_pub_key = match PublicKey::from_hex(&peer_id) {
@@ -644,148 +748,8 @@ impl SyncManager {
                 return Err(e);
             }
         }
-
-        // 4. Check if previous_link matches our current link (single-hop verification)
-        if let Some(prev) = previous_link {
-            if prev != current_link {
-                tracing::warn!(
-                    "Single-hop check failed: peer's previous {:?} != our current {:?}",
-                    prev,
-                    current_link
-                );
-                // if we have a previous link, and they match their previous link
-                if let Some(our_prev) = our_previous {
-                    if prev == *our_prev {
-                        tracing::warn!(
-                            "this probably means the peer sent a duplicate announcement"
-                        );
-                        return Ok(());
-                    }
-                }
-                bucket
-                    .update_sync_status(
-                        SyncStatus::Failed,
-                        Some("Single-hop verification failed: out of order update".to_string()),
-                        self.state.database(),
-                    )
-                    .await?;
-                return Ok(());
-            }
-        } else {
-            // No previous link means this is an initial version, not an update
-            tracing::warn!("Peer announce has no previous link, rejecting");
-            bucket
-                .update_sync_status(
-                    SyncStatus::Failed,
-                    Some("Announce must include previous link for updates".to_string()),
-                    self.state.database(),
-                )
-                .await?;
-            return Ok(());
-        }
-
-        // 5. Download and verify the new BucketData
-        let bucket_data = match self.download_from_peer(&new_link, &peer_pub_key).await {
-            Ok(data) => data,
-            Err(e) => {
-                tracing::error!(
-                    "Failed to download bucket data from link {:?}: {}",
-                    new_link,
-                    e
-                );
-                bucket
-                    .update_sync_status(
-                        SyncStatus::Failed,
-                        Some(format!("Failed to download new bucket data: {}", e)),
-                        self.state.database(),
-                    )
-                    .await?;
-                return Ok(());
-            }
-        };
-
-        // 6. Double-check single-hop on the downloaded BucketData
-        if !Self::verify_single_hop(&current_link, &bucket_data) {
-            tracing::warn!(
-                "Single-hop verification failed on downloaded BucketData for bucket {}",
-                bucket_id
-            );
-            bucket
-                .update_sync_status(
-                    SyncStatus::Failed,
-                    Some("Downloaded bucket data failed single-hop verification".to_string()),
-                    self.state.database(),
-                )
-                .await?;
-            return Ok(());
-        }
-
-        // 7. All checks passed! Update bucket with new link and mark as synced
-        tracing::info!(
-            "Peer announce validated for bucket {}, updating to new link {:?}",
-            bucket_id,
-            new_link
-        );
-
-        // Download the pinset if it exists
-        let pins_link = bucket_data.pins();
-        tracing::debug!("BucketData has pinset link: {:?}", pins_link);
-        tracing::info!(
-            "Downloading pinset for bucket {} update from peer {}",
-            bucket_id,
-            peer_id
-        );
-        let blobs = self.state.node().blobs();
-        let endpoint = self.state.node().endpoint();
-        let pins_hash = *pins_link.hash();
-        let peer_ids = vec![peer_pub_key.into()];
-
-        tracing::debug!("Pinset hash: {:?}, peer_ids: {:?}", pins_hash, peer_ids);
-
-        match blobs
-            .download_hash_list(pins_hash, peer_ids.clone(), endpoint)
+        // Use shared verifier + applier
+        self.verify_and_apply_update(bucket_id, &current_link, &new_link, &peer_pub_key, &peer_id)
             .await
-        {
-            Ok(()) => {
-                tracing::info!(
-                    "Successfully downloaded pinset for bucket {} update",
-                    bucket_id
-                );
-
-                // Verify the pinset was actually downloaded
-                match blobs.stat(&pins_hash).await {
-                    Ok(true) => {
-                        tracing::debug!("Verified pinset hash {} exists locally", pins_hash)
-                    }
-                    Ok(false) => tracing::error!(
-                        "Pinset hash {} NOT found locally after download!",
-                        pins_hash
-                    ),
-                    Err(e) => {
-                        tracing::error!("Error checking pinset hash {}: {}", pins_hash, e)
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::error!(
-                    "Failed to download pinset for bucket {} update from peer {}: {}",
-                    bucket_id,
-                    peer_id,
-                    e
-                );
-                // Don't fail the whole operation, we'll mark it as partially synced
-            }
-        }
-
-        bucket
-            .update_link_and_sync(new_link, self.state.database())
-            .await?;
-
-        tracing::info!(
-            "Successfully synced bucket {} from peer announce",
-            bucket_id
-        );
-
-        Ok(())
     }
 }
