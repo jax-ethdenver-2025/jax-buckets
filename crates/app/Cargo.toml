@@ -1,6 +1,6 @@
 [package]
 name = "jax-bucket"
-version = "0.1.1"
+version = "0.1.2"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -16,7 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 common = { package = "jax-common", version = "^0.1.1", path = "../common" }
-service = { package = "jax-service", version = "^0.1.1", path = "../service", features = ["clap"] }
+service = { package = "jax-service", version = "^0.1.2", path = "../service", features = ["clap"] }
 
 clap = { workspace = true }
 anyhow = { workspace = true }
