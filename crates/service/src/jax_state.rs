@@ -13,7 +13,7 @@ use crate::database::Database;
 use crate::sync_manager::SyncEvent;
 
 /// Maximum depth to traverse when checking bucket history
-const MAX_HISTORY_DEPTH: usize = 100;
+pub const MAX_HISTORY_DEPTH: usize = 100;
 
 /// State provider for the JAX protocol
 ///

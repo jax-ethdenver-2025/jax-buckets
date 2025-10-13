@@ -424,13 +424,13 @@ Fetch updates from peers:
 1. **Query Peers**: Ping all peers for the bucket in parallel
 2. **Find Ahead Peer**: Look for a peer with `SyncStatus::Ahead`
 3. **Fetch Link**: Get the new bucket link from that peer
-4. **Verify Single-Hop**: Ensure peer's previous equals our current
-5. **Download Manifest**: Fetch manifest blob via Iroh
-6. **Verify Provenance**: Check that peer is in bucket shares
+4. **Download Manifest**: Fetch the latest manifest blob for that link from the specific peer
+5. **Multi-Hop Verify**: Walk the manifest chain backwards until a manifest whose `previous` equals our current link is found, bounded by `MAX_HISTORY_DEPTH`
+6. **Verify Provenance**: Check that the announcing peer is authorized in the bucket shares
 7. **Download Pins**: Fetch pinset (HashSeq)
 8. **Update Database**: Save new link, mark as synced
 
-**Code**: `rust/crates/service/src/sync_manager/mod.rs:204`
+**Code**: see `verify_multi_hop` and `verify_and_apply_update` in `rust/crates/service/src/sync_manager/mod.rs`
 
 #### Push Sync
 
@@ -449,16 +449,16 @@ Process incoming announcements:
 
 1. **Receive Announce**: Peer notifies us of new version
 2. **Verify Provenance**: Check peer is in bucket shares
-3. **Verify Single-Hop**: Ensure previous equals our current
-4. **Download Manifest**: Fetch from announcing peer
+3. **Download Manifest**: Fetch latest manifest referenced by the announced link from the announcing peer
+4. **Multi-Hop Verify**: Walk the peer's manifest chain back to our current link within `MAX_HISTORY_DEPTH`
 5. **Download Pins**: Fetch pinset
 6. **Update Database**: Save new link
 
-**Code**: `rust/crates/service/src/sync_manager/mod.rs:483`
+**Code**: see `verify_multi_hop` and `verify_and_apply_update` in `rust/crates/service/src/sync_manager/mod.rs`
 
 ### Sync Verification
 
-Two critical safety checks:
+Core verification checks:
 
 #### 1. Provenance Check
 
@@ -470,22 +470,32 @@ if !manifest.shares.contains_key(&peer_public_key) {
 }
 ```
 
-#### 2. Single-Hop Check
+#### 2. Multi-Hop Verification
 
-Only accept updates that reference our current version:
+Accept updates only if the peer's latest link chains back to our current link within a bounded history depth. The verifier walks the `previous` pointers starting from the peer's latest manifest, downloading only from the specific peer, until it finds a manifest whose `previous` equals our current link or the walk terminates.
+
+Algorithm (simplified):
 
 ```rust
-if manifest.previous != Some(our_current_link) {
-    return Err("Not a single-hop update");
+for depth in 0..MAX_HISTORY_DEPTH {
+    let manifest = download_or_use_cached(latest_or_cursor, peer_pub_key)?;
+    match manifest.previous() {
+        Some(prev) if prev == our_current_link => return Verified(depth),
+        Some(prev) => cursor = prev.clone(),
+        None => return Fork,
+    }
 }
+return DepthExceeded
 ```
 
-This prevents:
-- Accepting stale updates
-- Accepting forked versions
-- Skipping intermediate versions
+Outcomes:
+- **Verified(depth)**: Update is on the same chain; safe to apply
+- **Fork**: Peer chain does not include our current link; reject update
+- **DepthExceeded**: Chain too long (over `MAX_HISTORY_DEPTH`); reject update
 
-If the check fails, trigger a full pull sync to reconcile state.
+Depth is bounded by `MAX_HISTORY_DEPTH` (see `rust/crates/service/src/jax_state.rs`, default 100) to protect against unbounded history walks.
+
+On failure (Fork or DepthExceeded), the update is rejected and the sync status is marked as Failed. A full pull sync may be initiated separately to reconcile state if desired.
 
 ## Security Model
 
@@ -585,6 +595,7 @@ If the check fails, trigger a full pull sync to reconcile state.
 - **Peer**: `rust/crates/common/src/peer/mod.rs`
 - **JAX Protocol**: `rust/crates/common/src/peer/jax_protocol/`
 - **Sync Manager**: `rust/crates/service/src/sync_manager/mod.rs`
+- **Service Constants**: `rust/crates/service/src/jax_state.rs` (e.g., `MAX_HISTORY_DEPTH`)
 
 ### Dependencies
 
