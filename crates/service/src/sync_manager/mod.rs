@@ -321,6 +321,86 @@ impl SyncManager {
         Ok(())
     }
 
+    /// Create a new local bucket entry from a peer's announced link.
+    /// Downloads the manifest to obtain the bucket name, creates the DB row,
+    /// and best-effort downloads the pinset.
+    async fn create_bucket_from_peer(
+        &self,
+        bucket_id: Uuid,
+        new_link: &Link,
+        peer_pub_key: &PublicKey,
+        peer_label: &str,
+    ) -> anyhow::Result<()> {
+        // Download manifest to obtain bucket name
+        let bucket_data = match self.download_from_peer(new_link, peer_pub_key).await {
+            Ok(data) => data,
+            Err(e) => {
+                tracing::error!(
+                    "Failed to download bucket data from peer {} for link {:?}: {}",
+                    peer_label,
+                    new_link,
+                    e
+                );
+                return Ok(());
+            }
+        };
+
+        let bucket_name = bucket_data.name().to_string();
+
+        // Create the bucket
+        tracing::info!(
+            "Creating bucket {} with name '{}' from peer {}",
+            bucket_id,
+            bucket_name,
+            peer_label
+        );
+        Bucket::create(
+            bucket_id,
+            bucket_name,
+            new_link.clone(),
+            self.state.database(),
+        )
+        .await?;
+
+        // Best-effort pinset download
+        let pins_link = bucket_data.pins();
+        let blobs = self.state.node().blobs();
+        let endpoint = self.state.node().endpoint();
+        let pins_hash = *pins_link.hash();
+        let peer_ids = vec![(*peer_pub_key).into()];
+
+        match blobs
+            .download_hash_list(pins_hash, peer_ids, endpoint)
+            .await
+        {
+            Ok(()) => {
+                tracing::info!(
+                    "Successfully downloaded pinset for bucket {} from peer {}",
+                    bucket_id,
+                    peer_label
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    "Failed to download pinset for bucket {} from peer {}: {}",
+                    bucket_id,
+                    peer_label,
+                    e
+                );
+                // Do not fail the overall create on pinset errors
+            }
+        }
+
+        tracing::info!(
+            "Created bucket {} from peer {} with link {:?}",
+            bucket_id,
+            peer_label,
+            new_link
+        );
+
+        Ok(())
+    }
+
     /// get a bucket locally
     async fn get_bucket(&self, link: &Link) -> anyhow::Result<Manifest> {
         let data = self.state.node().blobs().get(link.hash()).await?;
@@ -598,10 +678,9 @@ impl SyncManager {
             Some(b) => b,
             None => {
                 tracing::info!(
-                    "Bucket {} not found, will create from peer announce after verification",
+                    "Bucket {} not found, will create from peer announce",
                     bucket_id
                 );
-
                 // Parse peer public key from peer_id (hex string)
                 let peer_pub_key = match PublicKey::from_hex(&peer_id) {
                     Ok(key) => key,
@@ -616,89 +695,9 @@ impl SyncManager {
                     }
                 };
 
-                // Download the BucketData from the peer
-                let bucket_data = match self.download_from_peer(&new_link, &peer_pub_key).await {
-                    Ok(data) => data,
-                    Err(e) => {
-                        tracing::error!(
-                            "Failed to download bucket data from peer {} for link {:?}: {}",
-                            peer_id,
-                            new_link,
-                            e
-                        );
-                        return Ok(());
-                    }
-                };
-
-                // Get the bucket name from the BucketData
-                let bucket_name = bucket_data.name().to_string();
-
-                // Create the bucket with the fetched data
-                tracing::info!(
-                    "Creating bucket {} with name '{}' from peer announce",
-                    bucket_id,
-                    bucket_name
-                );
-                Bucket::create(
-                    bucket_id,
-                    bucket_name,
-                    new_link.clone(),
-                    self.state.database(),
-                )
-                .await?;
-
-                // Download the pinset if it exists
-                let pins_link = bucket_data.pins();
-                tracing::debug!("BucketData has pinset link: {:?}", pins_link);
-                tracing::info!(
-                    "Downloading pinset for bucket {} from peer {}",
-                    bucket_id,
-                    peer_id
-                );
-                let blobs = self.state.node().blobs();
-                let endpoint = self.state.node().endpoint();
-                let pins_hash = *pins_link.hash();
-                let peer_ids = vec![peer_pub_key.into()];
-
-                tracing::debug!("Pinset hash: {:?}, peer_ids: {:?}", pins_hash, peer_ids);
-
-                match blobs
-                    .download_hash_list(pins_hash, peer_ids.clone(), endpoint)
-                    .await
-                {
-                    Ok(()) => {
-                        tracing::info!("Successfully downloaded pinset for bucket {}", bucket_id);
-
-                        // Verify the pinset was actually downloaded
-                        match blobs.stat(&pins_hash).await {
-                            Ok(true) => {
-                                tracing::debug!("Verified pinset hash {} exists locally", pins_hash)
-                            }
-                            Ok(false) => tracing::error!(
-                                "Pinset hash {} NOT found locally after download!",
-                                pins_hash
-                            ),
-                            Err(e) => {
-                                tracing::error!("Error checking pinset hash {}: {}", pins_hash, e)
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            "Failed to download pinset for bucket {} from peer {}: {}",
-                            bucket_id,
-                            peer_id,
-                            e
-                        );
-                        // Don't fail the whole operation, bucket is still created
-                    }
-                }
-
-                tracing::info!(
-                    "Created bucket {} from peer announce with link {:?}",
-                    bucket_id,
-                    new_link
-                );
+                // Use shared create path
+                self.create_bucket_from_peer(bucket_id, &new_link, &peer_pub_key, &peer_id)
+                    .await?;
                 return Ok(());
             }
         };
