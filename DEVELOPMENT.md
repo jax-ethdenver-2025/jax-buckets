@@ -312,6 +312,54 @@ Integration tests are located in `crates/*/tests/`:
 ```bash
 # Run only integration tests
 cargo test --test '*'
+### In-Process Integration Tests (testkit)
+
+Enable the `testkit` feature to run in-process multi-peer tests without external binaries.
+
+Run tests:
+
+```bash
+cargo test -p jax-service --features testkit -- --nocapture
+```
+
+Example scenario: share with a peer, take them offline, add files, bring them back and pull.
+
+```rust
+// crates/service/tests/share_offline_then_sync.rs
+#![cfg(feature = "testkit")]
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn share_offline_then_sync() -> anyhow::Result<()> {
+    use std::time::Duration;
+    use service::testkit::*;
+
+    let mut net = TestNetwork::new();
+    let alice = net.add_peer("alice");
+    let bob = net.add_peer("bob");
+
+    alice.start().await?;
+    bob.start().await?;
+
+    let bucket = alice.create_bucket("shared").await?;
+    alice.share_bucket_with(bucket, bob).await?;
+
+    bob.stop().await?;
+    alice.add_file_bytes(bucket, "/a.txt", b"hello").await?;
+    alice.add_file_bytes(bucket, "/b.txt", b"world").await?;
+    bob.start().await?;
+    bob.trigger_pull(bucket).await?;
+
+    net.eventually(Duration::from_secs(15), || async {
+        Ok(bob.has_file(bucket, "/a.txt").await?)
+    }).await?;
+    net.eventually(Duration::from_secs(15), || async {
+        Ok(bob.has_file(bucket, "/b.txt").await?)
+    }).await?;
+
+    Ok(())
+}
+```
+
 ```
 
 ## Code Style

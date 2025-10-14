@@ -12,3 +12,7 @@ pub use config::Config as ServiceConfig;
 pub use mount_ops::{BucketInfo, FileInfo, MountOpsError};
 pub use process::spawn_service;
 pub use state::{State as ServiceState, StateSetupError as ServiceStateSetupError};
+
+// Testkit for in-process integration tests
+#[cfg(feature = "testkit")]
+pub mod testkit;
