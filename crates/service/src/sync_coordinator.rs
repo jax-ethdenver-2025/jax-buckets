@@ -2,7 +2,6 @@ use flume::Receiver;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use common::crypto::PublicKey;
 use common::linked_data::Link;
 use common::peer::{Peer, PeerStateProvider};
 
@@ -14,14 +13,6 @@ pub enum SyncEvent {
 
     /// Push/announce to peers when we're ahead
     Push { bucket_id: Uuid, new_link: Link },
-
-    /// Peer announced a new version
-    PeerAnnounce {
-        bucket_id: Uuid,
-        peer_id: String,
-        new_link: Link,
-        previous_link: Option<Link>,
-    },
 
     /// Retry a failed sync
     Retry { bucket_id: Uuid },
@@ -62,37 +53,6 @@ impl SyncCoordinator {
                 } => {
                     self.peer
                         .sync_push(bucket_id, new_link, self.state.clone())
-                        .await
-                }
-
-                SyncEvent::PeerAnnounce {
-                    bucket_id,
-                    peer_id,
-                    new_link,
-                    previous_link,
-                } => {
-                    // Parse peer public key from hex string
-                    let peer_key = match PublicKey::from_hex(&peer_id) {
-                        Ok(key) => key,
-                        Err(e) => {
-                            tracing::error!(
-                                "Invalid peer public key {} for bucket {}: {}",
-                                peer_id,
-                                bucket_id,
-                                e
-                            );
-                            continue;
-                        }
-                    };
-
-                    self.peer
-                        .sync_handle_announce(
-                            bucket_id,
-                            peer_key,
-                            new_link,
-                            previous_link,
-                            self.state.clone(),
-                        )
                         .await
                 }
 

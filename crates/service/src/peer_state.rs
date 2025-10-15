@@ -6,6 +6,7 @@ use common::bucket::Manifest;
 use common::crypto::SecretKey;
 use common::linked_data::{BlockEncoded, Link};
 use common::peer::{BlobsStore, BucketSyncStatus, PeerStateProvider, ShareInfo, SyncStatus};
+use iroh::Endpoint;
 
 use crate::database::models::SyncStatus as DbSyncStatus;
 use crate::database::{models::Bucket, Database};
@@ -21,6 +22,7 @@ pub const MAX_HISTORY_DEPTH: usize = 100;
 pub struct ServicePeerState {
     database: Database,
     blobs: BlobsStore,
+    endpoint: iroh::Endpoint,
     node_secret: SecretKey,
 }
 
@@ -35,12 +37,55 @@ impl std::fmt::Debug for ServicePeerState {
 }
 
 impl ServicePeerState {
-    pub fn new(database: Database, blobs: BlobsStore, node_secret: SecretKey) -> Self {
+    pub fn new(database: Database, blobs: BlobsStore, endpoint: iroh::Endpoint, node_secret: SecretKey) -> Self {
         Self {
             database,
             blobs,
+            endpoint,
             node_secret,
         }
+    }
+
+    pub async fn from_config(
+        database: Database,
+        blobs: BlobsStore,
+        _blobs_store_path: std::path::PathBuf,
+        node_secret: SecretKey,
+        listen_addr: Option<std::net::SocketAddr>,
+    ) -> Result<Self, anyhow::Error> {
+        use std::net::{Ipv4Addr, SocketAddrV4};
+
+        // Create the endpoint
+        let socket_addr = listen_addr.unwrap_or_else(|| std::net::SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0));
+
+        let addr = SocketAddrV4::new(
+            socket_addr
+                .ip()
+                .to_string()
+                .parse::<Ipv4Addr>()
+                .expect("failed to parse IP address"),
+            socket_addr.port(),
+        );
+
+        let mainline_discovery = iroh::discovery::pkarr::dht::DhtDiscovery::builder()
+            .secret_key(node_secret.0.clone())
+            .build()
+            .expect("failed to build mainline discovery");
+
+        let endpoint = iroh::Endpoint::builder()
+            .secret_key(node_secret.0.clone())
+            .discovery(mainline_discovery)
+            .bind_addr_v4(addr)
+            .bind()
+            .await
+            .expect("failed to bind ephemeral endpoint");
+
+        Ok(Self {
+            database,
+            blobs,
+            endpoint,
+            node_secret,
+        })
     }
 
     pub fn database(&self) -> &Database {
@@ -244,6 +289,10 @@ impl PeerStateProvider for ServicePeerState {
 
     fn blobs(&self) -> &BlobsStore {
         &self.blobs
+    }
+
+    fn endpoint(&self) -> &Endpoint {
+        &self.endpoint
     }
 
     fn node_secret(&self) -> &SecretKey {

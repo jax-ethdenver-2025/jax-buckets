@@ -90,6 +90,9 @@ pub trait PeerStateProvider: Send + Sync + std::fmt::Debug {
     /// Access to the blobs store
     fn blobs(&self) -> &BlobsStore;
 
+    /// Access to the iroh endpoint
+    fn endpoint(&self) -> &iroh::Endpoint;
+
     /// Access to the node's secret key
     fn node_secret(&self) -> &SecretKey;
 }

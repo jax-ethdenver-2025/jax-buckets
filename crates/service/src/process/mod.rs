@@ -37,23 +37,10 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
     // Create sync channel first
     let (sync_sender, sync_receiver) = flume::unbounded::<SyncEvent>();
 
-    // Create announce callback to send sync events
-    let announce_sync_sender = sync_sender.clone();
-    let announce_callback =
-        std::sync::Arc::new(move |bucket_id, peer_id, new_link, previous_link| {
-            let _ = announce_sync_sender.send(SyncEvent::PeerAnnounce {
-                bucket_id,
-                peer_id,
-                new_link,
-                previous_link,
-            });
-        });
-
-    // Create state with sync sender and announce callback
+    // Create state with sync sender
     let state = match ServiceState::from_config(
         service_config,
         sync_sender.clone(),
-        Some(announce_callback),
     )
     .await
     {

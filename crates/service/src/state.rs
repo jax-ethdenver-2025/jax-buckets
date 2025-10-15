@@ -7,7 +7,7 @@ use super::peer_state::ServicePeerState;
 use super::sync_coordinator::SyncEvent;
 
 use common::crypto::SecretKey;
-use common::peer::{AnnounceCallback, BlobsStore, Peer};
+use common::peer::{BlobsStore, Peer};
 
 /// Main service state - orchestrates all components
 #[derive(Clone)]
@@ -21,7 +21,6 @@ impl State {
     pub async fn from_config(
         config: &Config,
         sync_sender: flume::Sender<SyncEvent>,
-        announce_callback: Option<AnnounceCallback>,
     ) -> Result<Self, StateSetupError> {
         // 1. Setup database
         let sqlite_database_url = match config.sqlite_path {
@@ -57,31 +56,20 @@ impl State {
             .map_err(|e| StateSetupError::BlobsStoreError(e.to_string()))?;
         tracing::debug!("ServiceState::from_config - blobs store loaded successfully");
 
-        // 4. Create peer state (now we have blobs available)
-        let peer_state = Arc::new(ServicePeerState::new(
+        // 4. Create peer state which will own endpoint creation
+        let peer_state = Arc::new(ServicePeerState::from_config(
             database.clone(),
             blobs.clone(),
+            blobs_store_path.clone(),
             node_secret.clone(),
-        ));
+            config.node_listen_addr,
+        ).await.map_err(|e| StateSetupError::PeerStateError(e.to_string()))?);
 
-        // 5. Build peer with pre-loaded blobs and state
-        let mut peer_builder = Peer::builder()
-            .secret_key(node_secret)
-            .blobs_store(blobs)
-            .blobs_store_path(blobs_store_path)
-            .protocol_state(peer_state.clone());
-
-        // Set socket addr if specified
-        if let Some(addr) = config.node_listen_addr {
-            peer_builder = peer_builder.socket_addr(addr);
-        }
-
-        // Set announce callback if provided
-        if let Some(callback) = announce_callback {
-            peer_builder = peer_builder.announce_callback(callback);
-        }
-
-        let peer = peer_builder.build().await;
+        // 5. Build peer from the state (peer will use the endpoint from state via the protocol handler)
+        let peer = Peer::from_state(
+            peer_state.clone(),
+            blobs_store_path,
+        );
 
         // Log the bound addresses
         let bound_addrs = peer.endpoint().bound_sockets();
@@ -146,6 +134,8 @@ pub enum StateSetupError {
     InvalidDatabaseUrl,
     #[error("Blobs store error: {0}")]
     BlobsStoreError(String),
+    #[error("Peer state error: {0}")]
+    PeerStateError(String),
 }
 
 #[derive(Debug, thiserror::Error)]

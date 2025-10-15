@@ -24,17 +24,12 @@ pub type AnnounceCallback = Arc<
 #[derive(Clone)]
 pub struct JaxProtocol {
     state: Arc<dyn PeerStateProvider>,
-    announce_callback: Option<AnnounceCallback>,
 }
 
 impl std::fmt::Debug for JaxProtocol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("JaxProtocol")
             .field("state", &self.state)
-            .field(
-                "announce_callback",
-                &self.announce_callback.as_ref().map(|_| "<callback>"),
-            )
             .finish()
     }
 }
@@ -44,14 +39,7 @@ impl JaxProtocol {
     pub fn new(state: Arc<dyn PeerStateProvider>) -> Self {
         Self {
             state,
-            announce_callback: None,
         }
-    }
-
-    /// Set a callback to be invoked when an announce message is received
-    pub fn with_announce_callback(mut self, callback: AnnounceCallback) -> Self {
-        self.announce_callback = Some(callback);
-        self
     }
 
     /// Handle an incoming connection
@@ -195,25 +183,43 @@ impl JaxProtocol {
                 }
 
                 Request::Announce(announce_msg) => {
-                    let peer_id = remote_node_id.unwrap_or_else(|_| "unknown".to_string());
+                    let peer_id_str = remote_node_id.unwrap_or_else(|_| "unknown".to_string());
 
                     tracing::info!(
                         "Received announce from peer {} for bucket {} with new link {:?}",
-                        peer_id,
+                        peer_id_str,
                         announce_msg.bucket_id,
                         announce_msg.new_link
                     );
 
-                    // Invoke the announce callback if set
-                    if let Some(callback) = &self.announce_callback {
-                        callback(
+                    // Parse peer ID from the connection
+                    let peer_pub_key = match conn.remote_node_id() {
+                        Ok(node_id) => crate::crypto::PublicKey::from(node_id),
+                        Err(e) => {
+                            tracing::error!("Failed to get remote node ID: {}", e);
+                            send.finish()
+                                .map_err(|e| AcceptError::from(std::io::Error::other(e)))?;
+                            return Ok(());
+                        }
+                    };
+
+                    // Handle the announce directly using the sync logic
+                    let result = crate::peer::handle_announce(
+                        announce_msg.bucket_id,
+                        peer_pub_key,
+                        announce_msg.new_link,
+                        announce_msg.previous_link,
+                        self.state.clone(),
+                    )
+                    .await;
+
+                    if let Err(e) = result {
+                        tracing::error!(
+                            "Failed to handle announce from peer {} for bucket {}: {}",
+                            peer_id_str,
                             announce_msg.bucket_id,
-                            peer_id,
-                            announce_msg.new_link,
-                            announce_msg.previous_link,
+                            e
                         );
-                    } else {
-                        tracing::warn!("Received announce but no callback is set");
                     }
 
                     // No response needed for announce - just finish the stream

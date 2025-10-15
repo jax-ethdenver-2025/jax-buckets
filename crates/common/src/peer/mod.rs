@@ -13,9 +13,10 @@ mod sync;
 
 pub use blobs_store::{BlobsStore, BlobsStoreError};
 pub use jax_protocol::{
-    announce_to_peer, fetch_bucket, ping_peer, AnnounceCallback, BucketSyncStatus, JaxProtocol,
+    announce_to_peer, fetch_bucket, ping_peer, BucketSyncStatus, JaxProtocol,
     PeerStateProvider, PingRequest, PingResponse, ShareInfo, SyncStatus, JAX_ALPN,
 };
+pub use sync::handle_announce;
 
 // Re-export iroh types for convenience
 pub use iroh::NodeAddr;
@@ -37,8 +38,6 @@ pub struct PeerBuilder {
     blobs_store: Option<BlobsStore>,
     /// optional state provider for the JAX protocol
     protocol_state: Option<std::sync::Arc<dyn PeerStateProvider>>,
-    /// optional callback for announce messages
-    announce_callback: Option<AnnounceCallback>,
 }
 
 // TODO (amiller68): proper errors
@@ -50,7 +49,6 @@ impl PeerBuilder {
             blobs_store_path: None,
             blobs_store: None,
             protocol_state: None,
-            announce_callback: None,
         }
     }
 
@@ -79,11 +77,6 @@ impl PeerBuilder {
         self
     }
 
-    pub fn announce_callback(mut self, callback: AnnounceCallback) -> Self {
-        self.announce_callback = Some(callback);
-        self
-    }
-
     pub async fn build(self) -> Peer {
         // set the socket port to unspecified if not set
         let socket_addr = self
@@ -92,6 +85,8 @@ impl PeerBuilder {
         // generate a new secret key if not set
         let secret_key = self.secret_key.unwrap_or_else(SecretKey::generate);
 
+        // TODO (amiller68): i don't love this, we should probably not allow setting the blobs
+        //  directly, and only allow setting the path -- i think this was a stupid thing claude added
         // Load or use provided blobs store
         let (blob_store, blobs_store_path) = if let Some(blobs) = self.blobs_store {
             tracing::debug!("PeerBuilder::build - using pre-loaded blobs store");
@@ -148,7 +143,6 @@ impl PeerBuilder {
             endpoint,
             blobs_store_path,
             protocol_state: self.protocol_state,
-            announce_callback: self.announce_callback,
         }
     }
 }
@@ -162,12 +156,24 @@ pub struct Peer {
     endpoint: Endpoint,
     blobs_store_path: PathBuf,
     protocol_state: Option<std::sync::Arc<dyn PeerStateProvider>>,
-    announce_callback: Option<AnnounceCallback>,
 }
 
 impl Peer {
     pub fn builder() -> PeerBuilder {
         PeerBuilder::default()
+    }
+
+    pub fn from_state(
+        state: std::sync::Arc<dyn PeerStateProvider>,
+        blobs_store_path: PathBuf,
+    ) -> Self {
+        Self {
+            blob_store: state.blobs().clone(),
+            secret: state.node_secret().clone(),
+            endpoint: state.endpoint().clone(),
+            blobs_store_path,
+            protocol_state: Some(state),
+        }
     }
 
     pub fn id(&self) -> NodeId {
@@ -190,6 +196,10 @@ impl Peer {
         &self.endpoint
     }
 
+    pub fn set_protocol_state(&mut self, state: std::sync::Arc<dyn PeerStateProvider>) {
+        self.protocol_state = Some(state);
+    }
+
     pub async fn spawn(&self, mut shutdown_rx: WatchReceiver<()>) -> anyhow::Result<()> {
         // clone the blob store inner for the router
         let inner_blobs = self.blob_store.inner.clone();
@@ -202,13 +212,7 @@ impl Peer {
 
         // If we have protocol state, register the JAX protocol
         if let Some(state) = &self.protocol_state {
-            let mut jax_protocol = JaxProtocol::new(state.clone());
-
-            // Add announce callback if provided
-            if let Some(callback) = &self.announce_callback {
-                jax_protocol = jax_protocol.with_announce_callback(callback.clone());
-            }
-
+            let jax_protocol = JaxProtocol::new(state.clone());
             router_builder = router_builder.accept(JAX_ALPN, jax_protocol);
             tracing::info!("JAX protocol registered");
         }
