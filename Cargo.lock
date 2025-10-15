@@ -2777,6 +2777,7 @@ dependencies = [
  "flume",
  "futures",
  "http",
+ "iroh",
  "jax-common",
  "mime_guess",
  "reqwest",

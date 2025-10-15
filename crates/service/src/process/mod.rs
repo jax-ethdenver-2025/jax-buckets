@@ -13,7 +13,7 @@ use tracing_subscriber::{EnvFilter, Layer};
 const FINAL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
 use crate::http_server;
-use crate::sync_manager::SyncManager;
+use crate::sync_coordinator::{SyncCoordinator, SyncEvent};
 use crate::{ServiceConfig, ServiceState};
 
 pub async fn spawn_service(service_config: &ServiceConfig) {
@@ -34,7 +34,16 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
 
     let (graceful_waiter, shutdown_rx) = utils::graceful_shutdown_blocker();
 
-    let state = match ServiceState::from_config(service_config).await {
+    // Create sync channel first
+    let (sync_sender, sync_receiver) = flume::unbounded::<SyncEvent>();
+
+    // Create state with sync sender
+    let state = match ServiceState::from_config(
+        service_config,
+        sync_sender.clone(),
+    )
+    .await
+    {
         Ok(state) => std::sync::Arc::new(state),
         Err(e) => {
             tracing::error!("error creating server state: {}", e);
@@ -43,12 +52,6 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
     };
 
     let mut handles = Vec::new();
-
-    // Create sync manager
-    let (sync_manager, sync_receiver) = SyncManager::new(state.clone());
-
-    // Set the sync sender in state so other parts can trigger sync operations
-    state.as_ref().set_sync_sender(sync_manager.sender());
 
     // Get listen addresses from config
     let html_listen_addr = service_config
@@ -99,9 +102,10 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
     });
     handles.push(node_handle);
 
-    // Spawn sync manager
+    // Spawn sync coordinator
+    let sync_coordinator = SyncCoordinator::new(state.peer().clone(), state.peer_state().clone());
     let sync_handle = tokio::spawn(async move {
-        sync_manager.run(sync_receiver).await;
+        sync_coordinator.run(sync_receiver).await;
     });
     handles.push(sync_handle);
 
@@ -110,7 +114,6 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
     let mut periodic_rx = shutdown_rx.clone();
     let periodic_handle = tokio::spawn(async move {
         use crate::database::models::Bucket as BucketModel;
-        use crate::sync_manager::SyncEvent;
         use tokio::time::{interval, Duration};
 
         let mut interval_timer = interval(Duration::from_secs(60)); // Check every 60 seconds

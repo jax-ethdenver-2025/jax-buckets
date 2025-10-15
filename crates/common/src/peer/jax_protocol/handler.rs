@@ -6,23 +6,40 @@ use iroh::endpoint::Connection;
 use iroh::protocol::AcceptError;
 
 use super::messages::{FetchBucketResponse, PingResponse, Request, Response};
-use super::state::BucketStateProvider;
+use super::state::PeerStateProvider;
 
 /// ALPN identifier for the JAX protocol
 pub const JAX_ALPN: &[u8] = b"/iroh-jax/1";
 
+/// Callback type for handling announce messages
+pub type AnnounceCallback = Arc<
+    dyn Fn(uuid::Uuid, String, crate::linked_data::Link, Option<crate::linked_data::Link>)
+        + Send
+        + Sync,
+>;
+
 /// Protocol handler for the JAX protocol
 ///
 /// Accepts incoming connections and handles ping requests
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct JaxProtocol {
-    state: Arc<dyn BucketStateProvider>,
+    state: Arc<dyn PeerStateProvider>,
+}
+
+impl std::fmt::Debug for JaxProtocol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JaxProtocol")
+            .field("state", &self.state)
+            .finish()
+    }
 }
 
 impl JaxProtocol {
     /// Create a new JAX protocol handler with the given state provider
-    pub fn new(state: Arc<dyn BucketStateProvider>) -> Self {
-        Self { state }
+    pub fn new(state: Arc<dyn PeerStateProvider>) -> Self {
+        Self {
+            state,
+        }
     }
 
     /// Handle an incoming connection
@@ -166,27 +183,43 @@ impl JaxProtocol {
                 }
 
                 Request::Announce(announce_msg) => {
-                    let peer_id = remote_node_id.unwrap_or_else(|_| "unknown".to_string());
+                    let peer_id_str = remote_node_id.unwrap_or_else(|_| "unknown".to_string());
 
                     tracing::info!(
                         "Received announce from peer {} for bucket {} with new link {:?}",
-                        peer_id,
+                        peer_id_str,
                         announce_msg.bucket_id,
                         announce_msg.new_link
                     );
 
-                    // Handle the announce message (triggers sync event)
-                    if let Err(e) = self
-                        .state
-                        .handle_announce(
+                    // Parse peer ID from the connection
+                    let peer_pub_key = match conn.remote_node_id() {
+                        Ok(node_id) => crate::crypto::PublicKey::from(node_id),
+                        Err(e) => {
+                            tracing::error!("Failed to get remote node ID: {}", e);
+                            send.finish()
+                                .map_err(|e| AcceptError::from(std::io::Error::other(e)))?;
+                            return Ok(());
+                        }
+                    };
+
+                    // Handle the announce directly using the sync logic
+                    let result = crate::peer::handle_announce(
+                        announce_msg.bucket_id,
+                        peer_pub_key,
+                        announce_msg.new_link,
+                        announce_msg.previous_link,
+                        self.state.clone(),
+                    )
+                    .await;
+
+                    if let Err(e) = result {
+                        tracing::error!(
+                            "Failed to handle announce from peer {} for bucket {}: {}",
+                            peer_id_str,
                             announce_msg.bucket_id,
-                            peer_id,
-                            announce_msg.new_link,
-                            announce_msg.previous_link,
-                        )
-                        .await
-                    {
-                        tracing::error!("Error handling announce: {}", e);
+                            e
+                        );
                     }
 
                     // No response needed for announce - just finish the stream

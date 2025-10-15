@@ -5,6 +5,7 @@ help: ## Show this help message
 	@echo 'Usage: make [target]'
 	@echo ''
 	@echo 'Available targets:'
+	@echo '  dev: Start development environment with two nodes in tmux'
 	@echo '  check: Check all Rust code'
 	@echo '  install: Install dependencies'
 	@echo '  build: Build all Rust packages'
@@ -13,6 +14,10 @@ help: ## Show this help message
 	@echo '  fmt: Format code'
 	@echo '  fmt-check: Check code formatting'
 	@echo '  clean: Clean build artifacts'
+
+.PHONY: dev
+dev: ## Start development environment with two nodes in tmux
+	./bin/dev.sh
 
 .PHONY: check
 check: ## Check all Rust code

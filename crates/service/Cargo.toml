@@ -18,6 +18,9 @@ path = "src/lib.rs"
 # Workspace crates
 common = { package = "jax-common", version = "^0.1.1", path = "../common" }
 
+# iroh for peer networking
+iroh = { workspace = true }
+
 # optional clap support for CLI usage
 clap = { workspace = true, optional = true }
 
