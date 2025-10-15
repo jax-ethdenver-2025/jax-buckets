@@ -6,23 +6,52 @@ use iroh::endpoint::Connection;
 use iroh::protocol::AcceptError;
 
 use super::messages::{FetchBucketResponse, PingResponse, Request, Response};
-use super::state::BucketStateProvider;
+use super::state::PeerStateProvider;
 
 /// ALPN identifier for the JAX protocol
 pub const JAX_ALPN: &[u8] = b"/iroh-jax/1";
 
+/// Callback type for handling announce messages
+pub type AnnounceCallback = Arc<
+    dyn Fn(uuid::Uuid, String, crate::linked_data::Link, Option<crate::linked_data::Link>)
+        + Send
+        + Sync,
+>;
+
 /// Protocol handler for the JAX protocol
 ///
 /// Accepts incoming connections and handles ping requests
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct JaxProtocol {
-    state: Arc<dyn BucketStateProvider>,
+    state: Arc<dyn PeerStateProvider>,
+    announce_callback: Option<AnnounceCallback>,
+}
+
+impl std::fmt::Debug for JaxProtocol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JaxProtocol")
+            .field("state", &self.state)
+            .field(
+                "announce_callback",
+                &self.announce_callback.as_ref().map(|_| "<callback>"),
+            )
+            .finish()
+    }
 }
 
 impl JaxProtocol {
     /// Create a new JAX protocol handler with the given state provider
-    pub fn new(state: Arc<dyn BucketStateProvider>) -> Self {
-        Self { state }
+    pub fn new(state: Arc<dyn PeerStateProvider>) -> Self {
+        Self {
+            state,
+            announce_callback: None,
+        }
+    }
+
+    /// Set a callback to be invoked when an announce message is received
+    pub fn with_announce_callback(mut self, callback: AnnounceCallback) -> Self {
+        self.announce_callback = Some(callback);
+        self
     }
 
     /// Handle an incoming connection
@@ -175,18 +204,16 @@ impl JaxProtocol {
                         announce_msg.new_link
                     );
 
-                    // Handle the announce message (triggers sync event)
-                    if let Err(e) = self
-                        .state
-                        .handle_announce(
+                    // Invoke the announce callback if set
+                    if let Some(callback) = &self.announce_callback {
+                        callback(
                             announce_msg.bucket_id,
                             peer_id,
                             announce_msg.new_link,
                             announce_msg.previous_link,
-                        )
-                        .await
-                    {
-                        tracing::error!("Error handling announce: {}", e);
+                        );
+                    } else {
+                        tracing::warn!("Received announce but no callback is set");
                     }
 
                     // No response needed for announce - just finish the stream

@@ -13,8 +13,8 @@ mod messages;
 mod state;
 
 pub use client::{announce_to_peer, fetch_bucket, ping_peer};
-pub use handler::{JaxProtocol, JAX_ALPN};
+pub use handler::{AnnounceCallback, JaxProtocol, JAX_ALPN};
 pub use messages::{
     AnnounceMessage, FetchBucketRequest, FetchBucketResponse, PingRequest, PingResponse, SyncStatus,
 };
-pub use state::BucketStateProvider;
+pub use state::{BucketSyncStatus, PeerStateProvider, ShareInfo};

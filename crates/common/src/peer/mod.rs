@@ -9,11 +9,12 @@ use crate::crypto::SecretKey;
 
 mod blobs_store;
 pub mod jax_protocol;
+mod sync;
 
 pub use blobs_store::{BlobsStore, BlobsStoreError};
 pub use jax_protocol::{
-    announce_to_peer, fetch_bucket, ping_peer, BucketStateProvider, JaxProtocol, PingRequest,
-    PingResponse, SyncStatus, JAX_ALPN,
+    announce_to_peer, fetch_bucket, ping_peer, AnnounceCallback, BucketSyncStatus, JaxProtocol,
+    PeerStateProvider, PingRequest, PingResponse, ShareInfo, SyncStatus, JAX_ALPN,
 };
 
 // Re-export iroh types for convenience
@@ -32,8 +33,12 @@ pub struct PeerBuilder {
     /// the path to the blobs store on the peer's filesystem
     ///  if not set a temporary directory will be used
     blobs_store_path: Option<PathBuf>,
+    /// pre-loaded blobs store (if provided, blobs_store_path is ignored)
+    blobs_store: Option<BlobsStore>,
     /// optional state provider for the JAX protocol
-    protocol_state: Option<std::sync::Arc<dyn BucketStateProvider>>,
+    protocol_state: Option<std::sync::Arc<dyn PeerStateProvider>>,
+    /// optional callback for announce messages
+    announce_callback: Option<AnnounceCallback>,
 }
 
 // TODO (amiller68): proper errors
@@ -43,7 +48,9 @@ impl PeerBuilder {
             socket_addr: None,
             secret_key: None,
             blobs_store_path: None,
+            blobs_store: None,
             protocol_state: None,
+            announce_callback: None,
         }
     }
 
@@ -62,8 +69,18 @@ impl PeerBuilder {
         self
     }
 
-    pub fn protocol_state(mut self, state: std::sync::Arc<dyn BucketStateProvider>) -> Self {
+    pub fn blobs_store(mut self, blobs: BlobsStore) -> Self {
+        self.blobs_store = Some(blobs);
+        self
+    }
+
+    pub fn protocol_state(mut self, state: std::sync::Arc<dyn PeerStateProvider>) -> Self {
         self.protocol_state = Some(state);
+        self
+    }
+
+    pub fn announce_callback(mut self, callback: AnnounceCallback) -> Self {
+        self.announce_callback = Some(callback);
         self
     }
 
@@ -74,12 +91,29 @@ impl PeerBuilder {
             .unwrap_or_else(|| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0));
         // generate a new secret key if not set
         let secret_key = self.secret_key.unwrap_or_else(SecretKey::generate);
-        // and set the blobs store path to a temporary directory if not set
-        let blobs_store_path = self.blobs_store_path.unwrap_or_else(|| {
-            // Create a temporary directory for the blobs store
-            let temp_dir = tempfile::tempdir().expect("failed to create temporary directory");
-            temp_dir.path().to_path_buf()
-        });
+
+        // Load or use provided blobs store
+        let (blob_store, blobs_store_path) = if let Some(blobs) = self.blobs_store {
+            tracing::debug!("PeerBuilder::build - using pre-loaded blobs store");
+            // Use pre-loaded blobs store
+            // Use the provided path, or a dummy one (path is only used for logging)
+            let path = self
+                .blobs_store_path
+                .unwrap_or_else(|| PathBuf::from("/unknown"));
+            (blobs, path)
+        } else {
+            tracing::debug!("PeerBuilder::build - loading blobs store from path");
+            // Load from path
+            let blobs_store_path = self.blobs_store_path.unwrap_or_else(|| {
+                // Create a temporary directory for the blobs store
+                let temp_dir = tempfile::tempdir().expect("failed to create temporary directory");
+                temp_dir.path().to_path_buf()
+            });
+            let blob_store = BlobsStore::load(&blobs_store_path)
+                .await
+                .expect("failed to load blob store");
+            (blob_store, blobs_store_path)
+        };
 
         // now get to building
 
@@ -108,17 +142,13 @@ impl PeerBuilder {
             .await
             .expect("failed to bind ephemeral endpoint");
 
-        // Create the blob store
-        let blob_store = BlobsStore::load(&blobs_store_path)
-            .await
-            .expect("failed to load blob store");
-
         Peer {
             blob_store,
             secret: secret_key,
             endpoint,
             blobs_store_path,
             protocol_state: self.protocol_state,
+            announce_callback: self.announce_callback,
         }
     }
 }
@@ -131,7 +161,8 @@ pub struct Peer {
     secret: SecretKey,
     endpoint: Endpoint,
     blobs_store_path: PathBuf,
-    protocol_state: Option<std::sync::Arc<dyn BucketStateProvider>>,
+    protocol_state: Option<std::sync::Arc<dyn PeerStateProvider>>,
+    announce_callback: Option<AnnounceCallback>,
 }
 
 impl Peer {
@@ -171,7 +202,13 @@ impl Peer {
 
         // If we have protocol state, register the JAX protocol
         if let Some(state) = &self.protocol_state {
-            let jax_protocol = JaxProtocol::new(state.clone());
+            let mut jax_protocol = JaxProtocol::new(state.clone());
+
+            // Add announce callback if provided
+            if let Some(callback) = &self.announce_callback {
+                jax_protocol = jax_protocol.with_announce_callback(callback.clone());
+            }
+
             router_builder = router_builder.accept(JAX_ALPN, jax_protocol);
             tracing::info!("JAX protocol registered");
         }

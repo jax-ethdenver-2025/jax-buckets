@@ -60,7 +60,9 @@ impl BlobsStore {
     ///     the endpoint.
     #[allow(clippy::doc_overindented_list_items)]
     pub async fn load(path: &Path) -> Result<Self, BlobsStoreError> {
+        tracing::debug!("BlobsStore::load called with path: {:?}", path);
         let store = FsStore::load(path).await?;
+        tracing::debug!("BlobsStore::load completed loading FsStore");
         // let blobs = Blobs::builder(store).build(&endpoint);
         let blobs = BlobsProtocol::new(&store, None);
         Ok(Self {

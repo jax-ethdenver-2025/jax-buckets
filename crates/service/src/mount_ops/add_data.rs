@@ -5,7 +5,7 @@ use common::prelude::{Link, Mount};
 use uuid::Uuid;
 
 use crate::database::models::Bucket as BucketModel;
-use crate::sync_manager::SyncEvent;
+use crate::sync_coordinator::SyncEvent;
 use crate::ServiceState;
 
 use super::error::MountOpsError;
