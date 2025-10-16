@@ -516,12 +516,11 @@ impl SyncManager {
                 let peer = peer_addr.clone();
                 let link = current_link.clone();
                 async move {
-                    match ping_peer(endpoint, &peer, bucket_id, link).await {
-                        Ok(status) => Some((peer, status)),
-                        Err(e) => {
-                            tracing::warn!("Failed to ping peer {:?}: {}", peer, e);
-                            None
-                        }
+                    use tokio::time::{timeout, Duration};
+                    match timeout(Duration::from_secs(2), ping_peer(endpoint, &peer, bucket_id, link)).await {
+                        Ok(Ok(status)) => Some((peer, status)),
+                        Ok(Err(e)) => { tracing::warn!("Failed to ping peer {:?}: {}", peer, e); None },
+                        Err(_) => { tracing::warn!("Ping to peer {:?} timed out", peer); None },
                     }
                 }
             })
@@ -549,9 +548,15 @@ impl SyncManager {
         tracing::info!("Found ahead peer {:?} for bucket {}", peer_addr, bucket_id);
 
         // 5. Fetch the current bucket link from the ahead peer
-        let new_link = match fetch_bucket(endpoint, &peer_addr, bucket_id).await {
-            Ok(Some(link)) => link,
-            Ok(None) => {
+        #[cfg(feature = "testkit")]
+        let new_link = match tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            crate::testkit::protocol::test_fetch_bucket_addr(self.state.as_ref(), &peer_addr, bucket_id),
+        )
+        .await
+        {
+            Ok(Ok(Some(link))) => link,
+            Ok(Ok(None)) => {
                 tracing::warn!(
                     "Ahead peer {:?} returned no link for bucket {}",
                     peer_addr,
@@ -566,16 +571,64 @@ impl SyncManager {
                     .await?;
                 return Ok(());
             }
-            Err(e) => {
-                tracing::error!(
-                    "Failed to fetch bucket link from peer {:?}: {}",
-                    peer_addr,
-                    e
-                );
+            Ok(Err(e)) => {
+                tracing::error!("Failed to fetch bucket link from peer {:?}: {}", peer_addr, e);
                 bucket
                     .update_sync_status(
                         SyncStatus::Failed,
                         Some(format!("Failed to fetch bucket link: {}", e)),
+                        self.state.database(),
+                    )
+                    .await?;
+                return Ok(());
+            }
+            Err(_) => {
+                tracing::error!("Timed out fetching bucket link from peer {:?}", peer_addr);
+                bucket
+                    .update_sync_status(
+                        SyncStatus::Failed,
+                        Some("Timeout fetching bucket link".to_string()),
+                        self.state.database(),
+                    )
+                    .await?;
+                return Ok(());
+            }
+        };
+        #[cfg(not(feature = "testkit"))]
+        let new_link = match tokio::time::timeout(std::time::Duration::from_secs(3), fetch_bucket(endpoint, &peer_addr, bucket_id)).await {
+            Ok(Ok(Some(link))) => link,
+            Ok(Ok(None)) => {
+                tracing::warn!(
+                    "Ahead peer {:?} returned no link for bucket {}",
+                    peer_addr,
+                    bucket_id
+                );
+                bucket
+                    .update_sync_status(
+                        SyncStatus::OutOfSync,
+                        Some("Peer reported as ahead but has no bucket link".to_string()),
+                        self.state.database(),
+                    )
+                    .await?;
+                return Ok(());
+            }
+            Ok(Err(e)) => {
+                tracing::error!("Failed to fetch bucket link from peer {:?}: {}", peer_addr, e);
+                bucket
+                    .update_sync_status(
+                        SyncStatus::Failed,
+                        Some(format!("Failed to fetch bucket link: {}", e)),
+                        self.state.database(),
+                    )
+                    .await?;
+                return Ok(());
+            }
+            Err(_) => {
+                tracing::error!("Timed out fetching bucket link from peer {:?}", peer_addr);
+                bucket
+                    .update_sync_status(
+                        SyncStatus::Failed,
+                        Some("Timeout fetching bucket link".to_string()),
                         self.state.database(),
                     )
                     .await?;
@@ -623,6 +676,7 @@ impl SyncManager {
 
         // 3. Send announce messages to all peers in parallel
         let endpoint = self.state.node().endpoint();
+        #[cfg(feature = "testkit")]
         let announce_futures: Vec<_> = peers
             .iter()
             .map(|peer_addr| {
@@ -630,12 +684,24 @@ impl SyncManager {
                 let link = new_link.clone();
                 let prev = previous_link.clone();
                 async move {
-                    match announce_to_peer(endpoint, &peer, bucket_id, link, prev).await {
-                        Ok(()) => {
+                    use tokio::time::{timeout, Duration};
+                    match timeout(
+                        Duration::from_secs(2),
+                        crate::testkit::protocol::test_announce_to_peer_addr(
+                            self.state.as_ref(),
+                            &peer,
+                            bucket_id,
+                            link,
+                            prev,
+                        ),
+                    )
+                    .await
+                    {
+                        Ok(Ok(())) => {
                             tracing::debug!("Successfully announced to peer {:?}", peer);
                             Some(())
                         }
-                        Err(e) => {
+                        Ok(Err(e)) => {
                             tracing::warn!(
                                 "Failed to announce to peer {:?} for bucket {}: {}",
                                 peer,
@@ -644,6 +710,27 @@ impl SyncManager {
                             );
                             None
                         }
+                        Err(_) => {
+                            tracing::warn!("Announce to peer {:?} timed out", peer);
+                            None
+                        }
+                    }
+                }
+            })
+            .collect();
+        #[cfg(not(feature = "testkit"))]
+        let announce_futures: Vec<_> = peers
+            .iter()
+            .map(|peer_addr| {
+                let peer = peer_addr.clone();
+                let link = new_link.clone();
+                let prev = previous_link.clone();
+                async move {
+                    use tokio::time::{timeout, Duration};
+                    match timeout(Duration::from_secs(2), announce_to_peer(endpoint, &peer, bucket_id, link, prev)).await {
+                        Ok(Ok(())) => { tracing::debug!("Successfully announced to peer {:?}", peer); Some(()) }
+                        Ok(Err(e)) => { tracing::warn!("Failed to announce to peer {:?} for bucket {}: {}", peer, bucket_id, e); None }
+                        Err(_) => { tracing::warn!("Announce to peer {:?} timed out", peer); None }
                     }
                 }
             })
